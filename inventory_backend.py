@@ -20,17 +20,17 @@ def view(search):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     if search.isnumeric():
-        cur.execute("""SELECT *,
-        INSTR(code,?)
+        cur.execute("""SELECT *
         FROM stock
-        WHERE ? > 0
-        """, (search,search))
+        WHERE code = ?
+        """, (search,))
     elif search:
-        cur.execute("""SELECT *,
-        INSTR(name,?)
+        search = "%"+search+"%"
+        cur.execute("""SELECT *
         FROM stock
-        WHERE ? > 0
-        """, (search,search))    
+        WHERE name LIKE ?
+        COLLATE NOCASE
+        """, (search, ))
     else:
         cur.execute("SELECT * FROM stock")
     rows = cur.fetchall()
@@ -39,6 +39,14 @@ def view(search):
     return rows
 
 def insert_coupon():
+    name = input("What is the name of the coupon? ")
+    code = input("What is the coupon's code? ")
+    icode = input("What is the item code affected by the coupon? ")
+    weighorcent = input("Is this coupon per item/by weight, or a fixed percent? (Default is each) ")
+    minquant = input("How many items are needed for the coupon? (Leave blank for 0.01) ")
+    if minquant == "":
+        minquant = 0.01
+    
     return "Todo, sorry!"
 
 def insert_customer():
