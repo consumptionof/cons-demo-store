@@ -10,10 +10,11 @@ membership.
 
 ## What's working
 
-Currently, the only functioning parts of the program
-are the initialization script, which creates an empty
+Currently, there are only three functioning parts of the program:
+- The initialization script, which creates an empty
 database template with all the requisite information,
-and the function to add items to the products table.
+- The function to add items to the products table.
+- The function to search for products
 
 The products table, part of the store database,
 currently tracks the following:

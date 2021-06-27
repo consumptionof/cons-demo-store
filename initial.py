@@ -27,8 +27,11 @@ CREATE TABLE IF NOT EXISTS coupons (
     code INTEGER,
     item_code INTEGER,
     each_weigh INTEGER,
+    value REAL,
     min REAL,
     max REAL,
+    doubled INT,
+    disc_card INT,
     expire TEXT,
     re_cost INTEGER
 )
