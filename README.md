@@ -15,7 +15,10 @@ Currently, the following are the functioning parts of the program:
 database template with all the requisite information.
 - Adding items to the stock table.
 - Adding coupons to the coupons table.
-- Searching for products.
+- Searching for products, coupons, and rewards card members.
+(note: I haven't actually added any customers yet, so
+there's no guarantee yet that this function will work now.
+I'll get around to it once I've gotten the add customer function done.)
 
 
 The products table, part of the store database,

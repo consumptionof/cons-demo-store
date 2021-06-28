@@ -64,25 +64,42 @@ def stop_dupe(request, table, column):
     return result
 """        
 
-def view(search):
+def view(search, table):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    if search.isnumeric():
-        cur.execute("""SELECT *
-        FROM stock
-        WHERE code = ?
-        """, (search,))
-    elif search:
-        search = "%"+search+"%"
-        cur.execute("""SELECT *
-        FROM stock
-        WHERE name LIKE ?
-        COLLATE NOCASE
-        """, (search, ))
-    else:
-        cur.execute("SELECT * FROM stock")
+    if table == "stock":
+        if search.isnumeric():
+            cur.execute("SELECT * FROM stock WHERE code = ?", (search,))
+        elif search:
+            search = "%"+search+"%"
+            cur.execute("SELECT * FROM stock WHERE name LIKE ? COLLATE NOCASE", (search,))
+        else:
+            cur.execute("SELECT * FROM stock")
+    elif table == "coupons":
+        if search.isnumeric():
+            cur.execute("SELECT * FROM coupons WHERE code = ?", (search,))
+        elif search:
+            search = "%"+search+"%"
+            cur.execute("SELECT * FROM coupons WHERE name LIKE ? COLLATE NOCASE", (search,))
+        else:
+            cur.execute("SELECT * FROM coupons")
+    elif table == "cards":
+        if search.isnumeric():
+            search0 = input("Is this a phone number, or a card ID? ").lower()
+            if search0 == "phone" or "phone number":
+                cur.execute("SELECT * FROM cards WHERE phone = ?", (search,))
+            elif search0 == "card id" or search0 == "id":
+                cur.execute("SELECT * FROM cards WHERE id = ?", (search,))
+        elif search:
+            search = "%"+search+"%"
+            search0 = input("Is this a first name or last name?").lower()
+            if search0 == "first name" or search0 == "first" or search0 == "firstname":
+                cur.execute("SELECT * FROM cards WHERE fname LIKE ? COLLATE NOCASE", (search,))
+            elif search0 == "last name" or search0 == "last" or search0 == "lastname":
+                cur.execute("SELECT * FROM cards WHERE fname LIKE ? COLLATE NOCASE", (search,))
+        else:
+            cur.execute("SELECT * FROM cards")
     rows = cur.fetchall()
-    conn.commit()
     conn.close()
     return rows
 
@@ -201,7 +218,11 @@ def insert_product():
 print("What do you want to do?")
 command = input("Available: view, insert ").lower()
 if command == "view":
-    print(view(input("What code would you like to search for? (Blank for all) ")))
+    command0 = input("What table would you like to view (coupon, cards, or stock)? ")
+    if command0 == "coupon" or command0 == "coupons":
+        print(view(input("What coupon would you like to view? (Blank for all) "),"coupons"))
+    elif command0 == "products" or command0 == "product" or command0 == "stock":
+        print(view(input("What item would you like to search for? (Blank for all) ")))
 elif command == "insert":
     command0 = input("coupon, customer, or product? ").lower()
     if command0 == "coupon":
