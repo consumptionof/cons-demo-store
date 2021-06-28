@@ -10,11 +10,13 @@ membership.
 
 ## What's working
 
-Currently, there are only three functioning parts of the program:
+Currently, the following are the functioning parts of the program:
 - The initialization script, which creates an empty
-database template with all the requisite information,
-- The function to add items to the products table.
-- The function to search for products
+database template with all the requisite information.
+- Adding items to the stock table.
+- Adding coupons to the coupons table.
+- Searching for products.
+
 
 The products table, part of the store database,
 currently tracks the following:
