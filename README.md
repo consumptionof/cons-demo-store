@@ -95,6 +95,41 @@ currently tracks the following:
   the rewards points expended during the transaction,
   and the customer's total remaining rewards points.
 
+### Version 0.06
+- Updated check_numeric
+  In its original incarnation, check_numeric would just check
+  to see if a value was numeric. It failed to do so in cases
+  where the number has decimal numbers, like 1.5.
+  Now, it will check to see if something can be converted
+  to a float. If it can, it'll do so. If not, it'll tell
+  the user so, ask for another input. Rinse and repeat,
+  like the other "check" or "get" functions.
+  In addition, it can also be told that it's okay if
+  the user doesn't put anything in. This is necessary
+  wherever the program has a defined default value
+  or other system in place, like the number of rewards
+  points a customer starts out with.
+
+  I've updated insert_customer and insert_coupon
+  with the new check_numeric function. insert_product
+  will be updated soon.
+
+- Added generate_code
+  I realized that simply making an auto-generated code
+  increment from the highest ID number would likely
+  lead to conflicts in item codes. I kind of addressed this
+  with check_codes and stop_dupe, but those would just
+  stop the program in its tracks. This function will
+  detect the largest value in a specified table,
+  create one that's greater by 1 (say, 4000 to 4001),
+  then checks all other tables for an identical code.
+  If there is one, it'll increment the value by 1 again.
+  It'll keep doing this until it gets a unique value,
+  then return it to the previous function.
+
+- Added some placeholder functions for updating products,
+  customer rewards cards, and coupons.
+
 ### Version 0.05
 First of all, I'm going to try to implement version numbers into
 the program. That should make it easier to keep track of what

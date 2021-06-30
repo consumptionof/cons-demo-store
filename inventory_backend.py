@@ -34,6 +34,35 @@ def get_result(request, *argv):
             iter = iter + 1
     return result
 
+def generate_code(ttype):
+    dupe = 1
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    if ttype == "coupons":
+        cur.execute("SELECT MAX(code) FROM coupons")
+    elif ttype == "cards":
+        cur.execute("SELECT MAX(code) FROM cards")
+    elif ttype == "stock":
+        cur.execute("SELECT MAX(code) FROM stock")
+    else:
+        return "invalid_table"
+    maxcode = cur.fetchall()        # This returns a list with a single tuple,
+    maxcode = maxcode[0]            # which contains a single number. This [0]
+    maxcode = int(maxcode[0])       # business is extracting that one number.
+    maxcode = maxcode + 1           # + 1 saves it from running that loop more than needed.
+    while dupe == 1:
+        cur.execute("SELECT code FROM coupons WHERE code = ?", (maxcode,))
+        coupon_code = cur.fetchall()
+        cur.execute("SELECT code FROM cards WHERE code = ?", (maxcode,))
+        card_code = cur.fetchall()
+        cur.execute("SELECT code FROM stock WHERE code = ?", (maxcode,))
+        stock_code = cur.fetchall()
+        if coupon_code or card_code or stock_code:
+            maxcode = maxcode + 1
+        else:
+            dupe = 0
+    conn.close()
+    return maxcode
 
 def stop_dupe(request, table, column):
     iter = 0
@@ -71,7 +100,7 @@ def check_codes(request):
     result = "wr9ong" # This is a value that should never be a code.
     conn = sqlite3.connect("store.db") # If it is, something has gone terribly wrong.
     cur = conn.cursor()
-    while iter < 3:
+    while iter < 3 == False:
         digit = input(request)
         if digit == "":
             print("Please enter a code number.")
@@ -109,17 +138,23 @@ def check_codes(request):
     conn.close()
     return result
 
-def check_numeric(request):
+def check_numeric(request,cannull):
     iter = 0
     result = "not_numeric"
     while iter < 3:
         digit = input(request)
-        if not digit.isnumeric():
-            print("Please enter a number.")
-            iter = iter + 1
-        else:
+        if not digit and cannull == True:
             result = digit
             iter = 3
+        else:
+            try:                                # This seemed like the most reliable way
+                digit = float(digit)            # to check if something is numeric.
+            except ValueError:
+                print("Please enter a number.")
+                iter = iter + 1
+            else:
+                result = digit
+                iter = 3
     return result
 
 def view(search, table):
@@ -161,45 +196,65 @@ def view(search, table):
     conn.close()
     return rows
 
-def insert_coupon():
+def insert_coupon(): 
     name = input("What is the name of the coupon? ")
-    conn = sqlite3.connect("store.db")
-    cur = conn.cursor()
-    cur.execute("SELECT MAX(id2) FROM coupons")
-    precode = cur.fetchall()
-    conn.close()
-    if precode[0] == (None,):
-        precode = 0
-    code = precode + 6000000001
-    print("Auto-generated coupon code is %s" % code)
-    icode = input("What is the item code affected by the coupon? ")
+    code = check_numeric("What is the coupon's code: (Leave blank to auto-generate) ", True)
+    if not code:
+        print("Auto-generating coupon code...")
+        code = generate_code("coupons")
+    elif code == "not_numeric":
+        print("Incorrect input. Auto-generating coupon code...")
+        code = generate_code("coupons")
+    if code == "invalid_table":
+        return "Wrong table type. Please check the script."
+    print("Coupon code is %s" % code)
+    icode = check_numeric("What is the item code affected by the coupon? ", False)
+    if icode == "not_numeric":
+        return "Invalid item code."
     disctype = get_result("Is this coupon a fixed discount (1), a percent off(2), or a new price (3)?  ",1,2,3)
     if disctype == "wrong":
         return "Invalid discount type."
-    discval = input("What is the coupon's value? ")
-    minquant = input("How many items are needed for the coupon? (Default is 0.01) ")
-    if minquant == "":
+    discval = check_numeric("What is the coupon's value? ", False)
+    if discval == "not_numeric":
+        return "Invalid discount value."
+    minquant = check_numeric("How many items are needed for the coupon? (Default is 0.01) ", True)
+    if not minquant:
         minquant = 0.01
     maxquant = input("What is the maximum number of times this coupon can be applied? (Default is infinite) ")
-    if (maxquant.isnumeric() == False) or not maxquant:
+    if not maxquant.isnumeric(): # I'm intentionally leaving check_numeric out here. This var needs to be an int.
         maxquant = 0
     doubled = get_true("Should the coupon be doubled? ")
     disccard = get_true("Is this coupon exclusive to rewards card members? ")
     if disccard == 1:
-        points = input("What is the reward point cost for this coupon? (Default is 0) ")
-        if (points.isnull()) or (points.isnumeric() == False):
+        points = check_numeric("What is the reward point cost for this coupon? (Default is 0) ", False)
+        if not points.isnumeric():
             points = 0
     else:
         print("There will be no reward point cost for this coupon.")
         points = 0
-    predate = input("What is the date at which this coupon should expire? (Default is 30 days in the future) ")
-    if not predate:
-        td = datetime.now()
-        dt = timedelta(days=30)
+    predate = get_result("Will this coupon expire on a day (1), in some period of time (2), or never (3)? ",1,2,3)
+    if predate == 1:
+        predate = input("On what day will the coupon expire? ")
+        predate = parser.parse(predate)
+        expdate = predate.isoformat()
+    elif predate == 2:
+        dwmy = get_result("Will this coupon expire in days (1), weeks (2), months (3), or years (4)?", 1,2,3,4)
+        future_val = check_numeric("In how many of these will the coupon expire? ", False)
+        if future_val == "not_numeric":
+            return "Invalid time unit count."
+        if dwmy == 1:
+            td = timedelta(days=future_val)
+        elif dwmy == 2:
+            td = timedelta(weeks=future_val)
+        elif dwmy == 3:
+            td = timedelta(months=future_val)
+        elif dwmy == 4:
+            td = timedelta(years=future_val)
+        dt = datetime.now()
         procdate = td + dt
+        expdate = procdate.isoformat()
     else:
-        procdate = parser.parse(predate)
-    expdate = procdate.isoformat()
+        expdate = 0
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO coupons VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
@@ -218,19 +273,19 @@ def insert_coupon():
 def insert_customer():
     fname = input("What is the customer's first name? ").capitalize()
     lname = input("What is the customer's last name? ").capitalize()
-    phone = check_numeric("What is the customer's phone number? (Include the area code.) ")
+    phone = check_numeric("What is the customer's phone number? (Include the area code.) ", False)
+    if phone == "not_numeric":
+        return "Invalid phone number."
+    code = generate_code("cards")
+    if code == "invalid_table":
+        return "Wrong table type. Please check the script."
+    print("Automatically generated customer code is %s" % code)
+    points = input("How many rewards points should the customer start with? (Default is 0) ")
+    if not points.isnumeric():
+        points = 0
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    cur.execute("SELECT MAX(id3) FROM cards")
-    precode = cur.fetchall()
-    if precode[0] == (None,):
-        precode = 0
-    code = precode + 5000000001
-    print("Automatically generated customer code is %s" % code)
-    points = input("How many rewards points should the customer start with? (Default is 0)")
-    if not points.isnumeric() or not points:
-        points = 0
-    conn.execute("INSERT INTO cards VALUES (NULL,?,?,?,?,?)",(fname,lname,phone,code,points))
+    cur.execute("INSERT INTO cards VALUES (NULL,?,?,?,?,?)",(fname,lname,phone,code,points))
     conn.commit()
     conn.close()
     return """Added rewards card member.
@@ -275,7 +330,7 @@ def insert_product():
     if re_points == 2:
         return "Invalid rewards point entry."
     age = input("What is the minimum age to purchase this item? Default is 0: ")
-    if age == None or age.isnumeric() == False:
+    if not age.isnumeric():
         age = 0
     disc_price = input("What should the rewards card price be? Default is same as regular price: ")
     if disc_price == None:
@@ -283,7 +338,8 @@ def insert_product():
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO stock VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (name,code,weigh,quan,low_quan,restock,spec_quant,price,tax,ebt,re_points,age,disc_price))
+                (name,code,weigh,quan,low_quan,restock,
+                spec_quant,price,tax,ebt,re_points,age,disc_price))
     conn.commit()
     conn.close()
     return ("""Inserted product.
@@ -299,7 +355,22 @@ def insert_product():
         Purchasable with food stamps: {}
         Counts towards rewards points: {}
         Minimum age to purchase: {}
-        Store card discounted price: {}""".format(name, code, weigh, quan, low_quan, restock, spec_quant, price, tax, ebt, re_points, age, disc_price))
+        Store card discounted price: {}""".format(name, code, weigh, quan, low_quan,
+        restock, spec_quant, price, tax, ebt, re_points, age, disc_price))
+
+def update_coupon():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    search = input("What coupon would you like to view?\nYou can search by name or code, or view all.")
+    if search.isnumeric():
+        cur.execute("SELECT * FROM coupons WHERE code LIKE ?")
+    return "This function is under construction. Please check back later."
+
+def update_customer():
+    return "This function is under construction. Please check back later."
+
+def update_stock():
+    return "This function is under construction. Please check back later."
 
 print("What do you want to do?")
 command = input("Available: view, insert ").lower()
