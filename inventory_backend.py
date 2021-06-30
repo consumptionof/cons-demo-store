@@ -34,35 +34,93 @@ def get_result(request, *argv):
             iter = iter + 1
     return result
 
-"""
-    I may need this function in the future. You never know.
+
 def stop_dupe(request, table, column):
     iter = 0
-    result = "wr9ong" # Yes, this value is intentional. Who would enter such a thing themselves?
-    conn = sqlite3.connect("store.db")
+    result = "wr9ong" # This is a value that should never be in any of the tables.
+    conn = sqlite3.connect("store.db") # If it is, something has gone terribly wrong.
     cur = conn.cursor()
     while iter < 3:
         digit = input(request)
         if digit == "":
-            return ""
-        if table == "coupon":
-            cur.execute("SELECT * FROM coupon WHERE ? LIKE ?", (column, digit))
-        elif table == "cards":
-            cur.execute("SELECT * FROM cards WHERE ? LIKE ?", (column, digit))
-        elif table == "stock":
-            cur.execute("SELECT * FROM stock WHERE ? LIKE ?", (column, digit))
+            print("Please enter a value.")
+            iter = iter + 1
+            result = "no_result"
         else:
-            return "table_not_exists"
-        exists = cur.fetchall()
-        if exists:
-            print("The value %s already exists in table %s, column %s." % (digit,table,column))
+            if table == "coupon":
+                cur.execute("SELECT * FROM coupon WHERE ? LIKE ?", (column, digit))
+            elif table == "cards":
+                cur.execute("SELECT * FROM cards WHERE ? LIKE ?", (column, digit))
+            elif table == "stock":
+                cur.execute("SELECT * FROM stock WHERE ? LIKE ?", (column, digit))
+            else:
+                return "table_not_exists"
+            exists = cur.fetchall()
+            if exists:
+                print("The value %s already exists in table %s, column %s." % (digit,table,column))
+                iter = iter + 1
+                result = "item_exists"
+            else:
+                result = digit
+                iter = 3
+            conn.close()
+        return result
+
+def check_codes(request):
+    iter = 0
+    result = "wr9ong" # This is a value that should never be a code.
+    conn = sqlite3.connect("store.db") # If it is, something has gone terribly wrong.
+    cur = conn.cursor()
+    while iter < 3:
+        digit = input(request)
+        if digit == "":
+            print("Please enter a code number.")
+            iter = iter + 1
+            result = "no_result"
+        elif digit.isnumeric() == False:
+            print("Codes must be numeric. Please enter a number.")
+            iter = iter + 1
+            result = "not_numeric"
+        else:
+            cur.execute("SELECT * FROM coupons WHERE code LIKE ?", (digit,))
+            coupon_exists = cur.fetchall()
+            cur.execute("SELECT * FROM cards WHERE code LIKE ?", (digit,))
+            card_exists = cur.fetchall()
+            cur.execute("SELECT * FROM stock WHERE code LIKE ?", (digit,))
+            stock_exists = cur.fetchall()
+            if coupon_exists:
+                print("The entry appears to already exist in coupon:")
+                print(coupon_exists)
+                result = "exists"
+                iter = iter + 1
+            elif card_exists:
+                print("The entry appears to already exist in cards:")
+                print(card_exists)
+                result = "exists"
+                iter = iter + 1
+            elif stock_exists:
+                print("The entry appears to already exist in stock:")
+                print(stock_exists)
+                result = "exists"
+                iter = iter + 1
+            else:
+                result = digit
+                iter = 3
+    conn.close()
+    return result
+
+def check_numeric(request):
+    iter = 0
+    result = "not_numeric"
+    while iter < 3:
+        digit = input(request)
+        if not digit.isnumeric():
+            print("Please enter a number.")
             iter = iter + 1
         else:
             result = digit
             iter = 3
-        conn.close()
     return result
-"""        
 
 def view(search, table):
     conn = sqlite3.connect("store.db")
@@ -112,7 +170,7 @@ def insert_coupon():
     conn.close()
     if precode[0] == (None,):
         precode = 0
-    code = precode + 6000000000
+    code = precode + 6000000001
     print("Auto-generated coupon code is %s" % code)
     icode = input("What is the item code affected by the coupon? ")
     disctype = get_result("Is this coupon a fixed discount (1), a percent off(2), or a new price (3)?  ",1,2,3)
@@ -158,16 +216,44 @@ def insert_coupon():
     Rewards point cost: {}""".format(name,code,icode,disctype,discval,minquant,maxquant,doubled,disccard,points,expdate)
 
 def insert_customer():
-    return "Todo, sorry!"
+    fname = input("What is the customer's first name? ").capitalize()
+    lname = input("What is the customer's last name? ").capitalize()
+    phone = check_numeric("What is the customer's phone number? (Include the area code.) ")
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(id3) FROM cards")
+    precode = cur.fetchall()
+    if precode[0] == (None,):
+        precode = 0
+    code = precode + 5000000001
+    print("Automatically generated customer code is %s" % code)
+    points = input("How many rewards points should the customer start with? (Default is 0)")
+    if not points.isnumeric() or not points:
+        points = 0
+    conn.execute("INSERT INTO cards VALUES (NULL,?,?,?,?,?)",(fname,lname,phone,code,points))
+    conn.commit()
+    conn.close()
+    return """Added rewards card member.
+    First name: {}
+    Last name: {}
+    Phone number: {}
+    Reference code: {}
+    Rewards point balance: {}""".format(fname,lname,phone,code,points)
 
 def insert_product():
     name = input("What is the product's name? ")
-    code = input("What is the product's code number or PLU? ")
+    code = check_codes("What is the product's code number or PLU? ")
+    if code == "exists":
+        return "The specified item code already exists. Please use another one."
+    elif code == "no_result":
+        return "Error: No item code specified. Exiting."
+    elif code == "not_numeric":
+        return "Error: Codes must be numeric. Please enter a number."
     weigh = get_true("Should this item be sold by weight? Yes or No: ")
     if weigh == 2:
         return "Invalid weight entry."
-    quan = input("How many of the product do you have? ")
-    low_quan = input("How much/many of the product should be considered low stock? ")
+    quan = check_numeric("How many of the product do you have? ")
+    low_quan = check_numeric("How much/many of the product should be considered low stock? ")
     restock = get_true("Do you want to restock this item? ")
     if restock == 2:
         return "Invalid restock entry."
@@ -178,7 +264,7 @@ def insert_product():
         spec_quant = get_true("Do you want the cashier to specify a quantity of this item? ")
         if spec_quant == 2:
             return "Invalid quantity specification entry."
-    price = input("How much will this item cost, by each or by weight? ")
+    price = check_numeric("How much will this item cost, by each or by weight? ")
     tax = get_true("Is this item subject to sales tax? ")
     if tax == 2:
         return "Invalid sales tax entry."
@@ -222,7 +308,11 @@ if command == "view":
     if command0 == "coupon" or command0 == "coupons":
         print(view(input("What coupon would you like to view? (Blank for all) "),"coupons"))
     elif command0 == "products" or command0 == "product" or command0 == "stock":
-        print(view(input("What item would you like to search for? (Blank for all) ")))
+        print(view(input("What item would you like to search for? (Blank for all) "),"stock"))
+    elif command0 == "cards" or command0 == "card" or command0 == "customer" or command0 == "customers":
+        print(view(input("What customer would you like to search for? (Blank for all) "),"cards"))
+    else:
+        print("Invalid command.")
 elif command == "insert":
     command0 = input("coupon, customer, or product? ").lower()
     if command0 == "coupon":

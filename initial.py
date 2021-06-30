@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS cards (
     fname TEXT,
     lname TEXT,
     phone INTEGER,
-    id INTEGER,
+    code INTEGER,
     points INTEGER
 )
 """)
