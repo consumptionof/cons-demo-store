@@ -1,34 +1,42 @@
 import sqlite3
+from sqlite3.dbapi2 import Cursor
 import dateutil.parser as parser
 from datetime import datetime, timedelta
+import re
 
-def get_true(request):
+def get_true(request, default):
     iter = 0
     result = 2
     while iter < 3:
         digit = input(request).lower()
-        if digit == "no" or digit == "n" or digit == "0":
-            result = 0
-            iter = 3
-        elif digit == "yes" or digit == "ye" or digit == "y" or digit == "1":
-            result = 1
+        if digit:
+            if digit == "no" or digit == "n" or digit == "0":
+                result = 0
+                iter = 3
+            elif digit == "yes" or digit == "ye" or digit == "y" or digit == "1":
+                result = 1
+                iter = 3
+            else:
+                print("Invalid input.")
+                iter = iter + 1
+        elif (default == 0 or default == 1) and not digit:
+            result = default
             iter = 3
         else:
             print("Invalid input.")
             iter = iter + 1
     return result
 
-def get_result(request, *argv):
+def get_result(request, possibs):
     iter = 0
     result = "wrong"
     while iter < 3:
         digit = input(request)
         if digit.isnumeric():
             digit = int(digit)
-        for arg in argv:
-            if digit == arg:
-                result = digit
-                iter = 3
+        if digit in possibs:
+            result = digit
+            iter = 3
         if result != digit:
             print("Invalid input.")
             iter = iter + 1
@@ -95,12 +103,35 @@ def stop_dupe(request, table, column):
             conn.close()
         return result
 
+def check_phone():
+    iter = 0            # This function is necessary because it doesn't matter
+    result = "exists"   # if a phone number conflicts with a code. They're completely separate.
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    while iter < 3: # Doesn't need an input to be specified; it only checks for one thing.
+        pnumber = input("What is the customer's phone number? (Include the area code.) ")
+        pnumber = re.sub("-","",pnumber)
+        if pnumber.isnumeric():
+            cur.execute("SELECT * FROM cards WHERE phone = ?", (pnumber,))
+            phone_exists = cur.fetchall()
+            if phone_exists:
+                print("This phone number is already in use:\n%s" % phone_exists)
+                iter = iter + 1
+            else:
+                result = pnumber
+                iter = 3
+        else:
+            print("Please enter a number, with no periods.")
+            iter = iter + 1
+    conn.close()
+    return result
+
 def check_codes(request):
     iter = 0
     result = "wr9ong" # This is a value that should never be a code.
     conn = sqlite3.connect("store.db") # If it is, something has gone terribly wrong.
     cur = conn.cursor()
-    while iter < 3 == False:
+    while iter < 3:
         digit = input(request)
         if digit == "":
             print("Please enter a code number.")
@@ -211,7 +242,7 @@ def insert_coupon():
     icode = check_numeric("What is the item code affected by the coupon? ", False)
     if icode == "not_numeric":
         return "Invalid item code."
-    disctype = get_result("Is this coupon a fixed discount (1), a percent off(2), or a new price (3)?  ",1,2,3)
+    disctype = get_result("Is this coupon a fixed discount (1), a percent off(2), or a new price (3)?  ",(1,2,3))
     if disctype == "wrong":
         return "Invalid discount type."
     discval = check_numeric("What is the coupon's value? ", False)
@@ -223,8 +254,8 @@ def insert_coupon():
     maxquant = input("What is the maximum number of times this coupon can be applied? (Default is infinite) ")
     if not maxquant.isnumeric(): # I'm intentionally leaving check_numeric out here. This var needs to be an int.
         maxquant = 0
-    doubled = get_true("Should the coupon be doubled? ")
-    disccard = get_true("Is this coupon exclusive to rewards card members? ")
+    doubled = get_true("Should the coupon be doubled? (Default is no) ", 0)
+    disccard = get_true("Is this coupon exclusive to rewards card members? (Default is no) ", 0)
     if disccard == 1:
         points = check_numeric("What is the reward point cost for this coupon? (Default is 0) ", False)
         if not points.isnumeric():
@@ -232,13 +263,13 @@ def insert_coupon():
     else:
         print("There will be no reward point cost for this coupon.")
         points = 0
-    predate = get_result("Will this coupon expire on a day (1), in some period of time (2), or never (3)? ",1,2,3)
+    predate = get_result("Will this coupon expire on a day (1), in some period of time (2), or never (3)? ",(1,2,3))
     if predate == 1:
         predate = input("On what day will the coupon expire? ")
         predate = parser.parse(predate)
         expdate = predate.isoformat()
     elif predate == 2:
-        dwmy = get_result("Will this coupon expire in days (1), weeks (2), months (3), or years (4)?", 1,2,3,4)
+        dwmy = get_result("Will this coupon expire in days (1), weeks (2), months (3), or years (4)?", (1,2,3,4))
         future_val = check_numeric("In how many of these will the coupon expire? ", False)
         if future_val == "not_numeric":
             return "Invalid time unit count."
@@ -273,15 +304,15 @@ def insert_coupon():
 def insert_customer():
     fname = input("What is the customer's first name? ").capitalize()
     lname = input("What is the customer's last name? ").capitalize()
-    phone = check_numeric("What is the customer's phone number? (Include the area code.) ", False)
-    if phone == "not_numeric":
+    phone = check_phone()
+    if phone == "exists":
         return "Invalid phone number."
     code = generate_code("cards")
     if code == "invalid_table":
         return "Wrong table type. Please check the script."
     print("Automatically generated customer code is %s" % code)
     points = input("How many rewards points should the customer start with? (Default is 0) ")
-    if not points.isnumeric():
+    if not points.isnumeric(): # This also needs to be an integer, so this doesn't use check_numeric.
         points = 0
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
@@ -304,36 +335,42 @@ def insert_product():
         return "Error: No item code specified. Exiting."
     elif code == "not_numeric":
         return "Error: Codes must be numeric. Please enter a number."
-    weigh = get_true("Should this item be sold by weight? Yes or No: ")
+    weigh = get_true("Should this item be sold by weight? (Default is no) ", 0)
     if weigh == 2:
         return "Invalid weight entry."
-    quan = check_numeric("How many of the product do you have? ")
-    low_quan = check_numeric("How much/many of the product should be considered low stock? ")
-    restock = get_true("Do you want to restock this item? ")
+    quan = check_numeric("How much/many of the product do you have? ", False)
+    if quan == "not_numeric":
+        return "Invalid item quantity."
+    low_quan = check_numeric("How much/many of the product should be considered low stock? ", False)
+    if low_quan == "not_numeric":
+        return "Invalid low quantity value."
+    restock = get_true("Do you want to restock this item? (Default is yes) ", 1)
     if restock == 2:
         return "Invalid restock entry."
     if weigh == 1:
         print("The cashier will be asked to weigh this item.")
         spec_quant = 1
     else:
-        spec_quant = get_true("Do you want the cashier to specify a quantity of this item? ")
+        spec_quant = get_true("Do you want the cashier to specify a quantity of this item? (Default is no)", 0)
         if spec_quant == 2:
             return "Invalid quantity specification entry."
-    price = check_numeric("How much will this item cost, by each or by weight? ")
-    tax = get_true("Is this item subject to sales tax? ")
+    price = check_numeric("How much will this item cost, by each or by weight? ", False)
+    if check_numeric == "not_numeric":
+        return "Invalid price entry."
+    tax = get_true("Is this item subject to sales tax? (Default is no) ", 0)
     if tax == 2:
         return "Invalid sales tax entry."
-    ebt = get_true("Is this item available to puchase with food stamps? ")
+    ebt = get_true("Is this item available to puchase with food stamps? (Default is no) ", 0)
     if ebt == 2:
         return "Invalid food stamps entry."
-    re_points = get_true("Does purchasing this item count towards rewards points? ")
+    re_points = get_true("Does purchasing this item count towards rewards points? (Default is yes) ", 1)
     if re_points == 2:
         return "Invalid rewards point entry."
     age = input("What is the minimum age to purchase this item? Default is 0: ")
-    if not age.isnumeric():
+    if not age.isnumeric(): # This needs to be an integer, so get_numeric wouldn't work well here.
         age = 0
-    disc_price = input("What should the rewards card price be? Default is same as regular price: ")
-    if disc_price == None:
+    disc_price = check_numeric("What should the rewards card price be? Default is same as regular price: ", True)
+    if not disc_price:
         disc_price = price
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
@@ -358,12 +395,9 @@ def insert_product():
         Store card discounted price: {}""".format(name, code, weigh, quan, low_quan,
         restock, spec_quant, price, tax, ebt, re_points, age, disc_price))
 
-def update_coupon():
-    conn = sqlite3.connect("store.db")
-    cur = conn.cursor()
-    search = input("What coupon would you like to view?\nYou can search by name or code, or view all.")
-    if search.isnumeric():
-        cur.execute("SELECT * FROM coupons WHERE code LIKE ?")
+def update_coupon(search, table):
+    rows = view(search, table)
+    len_rows = len(rows)
     return "This function is under construction. Please check back later."
 
 def update_customer():

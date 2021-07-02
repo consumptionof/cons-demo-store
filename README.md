@@ -95,6 +95,38 @@ currently tracks the following:
   the rewards points expended during the transaction,
   and the customer's total remaining rewards points.
 
+### Version 0.07
+- Updated get_true
+  get_true can now accept default values.
+  The default is either 0, 1, or 2.
+  0 functions as False, 1 as True,
+  and 2 as an error. 2 is returned either if the user
+  entered nothing and no default value was intended,
+  or if the user put in an incorrect input too many times.
+  I've also updated the insert functions with this new function.
+
+- Added check_phone
+  This function just checks if a phone number exists.
+  I would revise check_codes to look at phone numbers
+  given a particular table name, but it would require me to 
+  also change the function so it wouldn't return a float.
+  IMO, it's easier to just use check_phone like this.
+
+- Made it so that check_codes actually does something.
+  It used to complete the function when iter < 3 was false,
+  which, of course, was set to 0 at the very start of the function.
+  Hopefully I don't have to do that anymore.
+  (Maybe this sounds a bit degrading, but I figure it's okay,
+  since I'm only degrading myself.)
+
+  I've also started work on the update_coupon function.
+  It's not nearly in working order yet, but I think
+  I might be able to make it call view and use those results
+  rather than rewriting a whole new "find entries in this table"
+  function. I might do something with the many functions
+  in the program, try to unify them a bit, but that
+  will come later.
+
 ### Version 0.06
 - Updated check_numeric
   In its original incarnation, check_numeric would just check
