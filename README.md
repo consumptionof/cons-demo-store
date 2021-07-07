@@ -95,6 +95,56 @@ currently tracks the following:
   the rewards points expended during the transaction,
   and the customer's total remaining rewards points.
 
+## Why do you have so many functions?
+  That's mostly for my own convenience. I hate when I mistype
+  something and the program immediately dies over a typo,
+  forcing me to retype everything I'd already entered
+  up to that point. Or when I mistype something,
+  the program doesn't recognize it, and something
+  wrong is put into the database -- something I may not
+  realize at the time, but will have to dig in and correct.
+  I'll bet a lot of users in general feel that way, as well.
+  So, as long as this is a CLI program, they will stay.
+  Maybe when I take this to a GUI I'll be able to rework
+  them to work with text entry fields.
+
+### Version 0.08
+- Updated view
+  I'm going to try building the update_(things) functions
+  around the view function. To that end, I've made it so that
+  it'll properly detect if something is a number or not.
+  For now, it'll only work with integers. Later on,
+  once this script is worked into a GUI program,
+  I might add the ability to search for prices.
+  That doesn't seem very helpful at the moment.
+  Furthermore, you can now search for the code of the item
+  affected by coupons. This is a much more useful thing
+  to search for than memorizing the exact number of 0s 
+  to put after the 6 and before the main code.
+  More generally, it now uses get_result instead of just
+  depending on its own resolution.
+
+- Updated check_numeric
+  This function now expects an input specifying
+  whether the expected result is an integer or a float.
+  Don't ask why I was so resistant to the idea, I'm
+  not really sure.
+  It also states when the default value is being used,
+  if one is being used.
+
+- Added update_coupon
+  This function will update existing entries in
+  the coupons table. You can change any variable you wish.
+  (If you change the entry so that a non-rewards card
+  member can get a coupon, but assign it a rewards point
+  value, it will probably break things. Please don't do that.)
+  This is the first of the three update functions I'll be making.
+
+- Updated get_true
+  This function now automatically uses the provided default
+  value if either no input is provided, or the input is wrong
+  too many times.
+
 ### Version 0.07
 - Updated get_true
   get_true can now accept default values.
