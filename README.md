@@ -108,6 +108,23 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.09
+- Updated update_coupon
+  update_coupon now checks to see if the coupon value is greater
+  than the original item's price. It will also check to see if
+  the specified item code already has a coupon associated with it.
+
+- All functions throughout the program no longer check if an
+  incorrect value is returned from get_true, as get_true
+  only returns 0 or 1 now.
+
+- Updated insert_coupon so it checks whether or not coupons
+  exist for a product.
+
+- Added update_stock
+  This function works very similarly to update_coupon, but
+  for products.
+
 ### Version 0.08
 - Updated view
   I'm going to try building the update_(things) functions

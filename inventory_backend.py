@@ -6,7 +6,7 @@ import re
 
 def get_true(request, default):
     iter = 0
-    result = 2
+    result = 2 # Please tell the user the default value.
     while iter < 3:
         digit = input(request).lower()
         if digit:
@@ -269,6 +269,16 @@ def insert_coupon():
     icode = check_numeric("What is the item code affected by the coupon? ", False, "int")
     if icode == "not_numeric":
         return "Invalid item code."
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM coupons WHERE item_code = ?", (icode,))
+    existing = cur.fetchall()   # I would use a function for this, but it's only being done twice.
+    if len(existing) > 0:       # Maybe if I have to do it a third time, I'll make a function.
+        print("The specified item code already has a coupon associated with it:\n{}".format(existing))
+        should = get_true("Would you like to continue? (Default is no) ", 0)
+        if should == 0:
+            return "Item code already in use. Exiting."
+    conn.close()
     disctype = get_result("Is this coupon a fixed discount (1), a percent off(2), or a new price (3)?  ",(1,2,3))
     if disctype == "wrong":
         return "Invalid discount type."
@@ -363,8 +373,6 @@ def insert_product():
     elif code == "not_numeric":
         return "Error: Codes must be numeric. Please enter a number."
     weigh = get_true("Should this item be sold by weight? (Default is no) ", 0)
-    if weigh == 2:
-        return "Invalid weight entry."
     quan = check_numeric("How much/many of the product do you have? ", False, "float")
     if quan == "not_numeric":
         return "Invalid item quantity."
@@ -372,27 +380,17 @@ def insert_product():
     if low_quan == "not_numeric":
         return "Invalid low quantity value."
     restock = get_true("Do you want to restock this item? (Default is yes) ", 1)
-    if restock == 2:
-        return "Invalid restock entry."
     if weigh == 1:
         print("The cashier will be asked to weigh this item.")
         spec_quant = 1
     else:
         spec_quant = get_true("Do you want the cashier to specify a quantity of this item? (Default is no)", 0)
-        if spec_quant == 2:
-            return "Invalid quantity specification entry."
     price = check_numeric("How much will this item cost, by each or by weight? ", False, "float")
     if check_numeric == "not_numeric":
         return "Invalid price entry."
     tax = get_true("Is this item subject to sales tax? (Default is no) ", 0)
-    if tax == 2:
-        return "Invalid sales tax entry."
     ebt = get_true("Is this item available to puchase with food stamps? (Default is no) ", 0)
-    if ebt == 2:
-        return "Invalid food stamps entry."
     re_points = get_true("Does purchasing this item count towards rewards points? (Default is yes) ", 1)
-    if re_points == 2:
-        return "Invalid rewards point entry."
     age = check_numeric("What is the minimum age to purchase this item? Default is 0: ", True, "int")
     if not age or age == "not_numeric" :
         age = 0
@@ -459,14 +457,14 @@ def update_coupon():
         Whether or not the coupon requires a discount card (9)
         The expiration date (10)
         The rewards point cost (11)""")
-    options = [*range(1, 11, 1)]
-    var_to_use = get_result("Enter your selection: ", options)
+    options = [*range(1, 12, 1)]                                # The second number has to be 1 greater than the intended size,
+    var_to_use = get_result("Enter your selection: ", options)  # otherwise it won't let you use the last option.
     if not isinstance(var_to_use, int):
         return var_to_use
 
-    if var_to_use == 1:             # I would just use one cur.execute, but the name is vulnerable to SQL injection.
+    if var_to_use == 1:                                                  # I would just use one cur.execute, but the name is vulnerable to SQL injection.
         cur.execute("SELECT name FROM coupons WHERE id2 = ?", (row_id,)) # Plus, all these different variables need to be treated differently.
-        old_val = cur.fetchone()    # Setting up for a comparison at the end.
+        old_val = cur.fetchone() # Setting up for a comparison at the end.
         new_val = input("What is the new name of the coupon? ")
         cur.execute("UPDATE coupons SET name = ? WHERE id2 = ?", (new_val, row_id))
     elif var_to_use == 2:
@@ -482,6 +480,13 @@ def update_coupon():
         new_val = check_numeric("What item code should the coupon affect? ", False, "int")
         if new_val == "not_numeric":
             return "Invalid item code."
+        cur.execute("SELECT * FROM coupons WHERE item_code = ?", (new_val,))
+        existing = cur.fetchall()
+        if len(existing) > 0:
+            print("The specified item code already has a coupon associated with it:\n{}".format(existing))
+            should = get_true("Would you like to continue? (Default is no) ", 0)
+            if should == 0:
+                return "Item code already in use. Exiting."
         cur.execute("UPDATE coupons SET item_code = ? WHERE id2 = ?", (new_val, row_id))
     elif var_to_use == 4:
         cur.execute("SELECT each_weigh FROM coupons WHERE id2 = ?", (row_id,))
@@ -496,6 +501,20 @@ def update_coupon():
         new_val = check_numeric("What is the new coupon value? ", False, "float")
         if new_val == "not_numeric":
             return "Invalid coupon value."
+        cur.execute("SELECT each_weigh FROM coupons WHERE id2 = ?", (row_id,))
+        coupon_type = cur.fetchone()
+        coupon_type = coupon_type[0]
+        cur.execute("SELECT item_code FROM coupons WHERE id2 = ?", (row_id,))
+        icode = cur.fetchone()
+        icode = icode[0]
+        cur.execute("SELECT price FROM stock WHERE code = ?", (icode,))
+        orig_price = cur.fetchone()
+        orig_price = orig_price[0]
+        if not coupon_type == 2 and new_val > orig_price:
+            print("The coupon's value ({}) seems to be higher than the price of the item({})".format(new_val, orig_price))
+            decision = get_true("Would you like to keep the coupon value? (Default is no) ", 0)
+            if decision == 0:
+                return "Coupon value exceeds item price. Exiting."
         cur.execute("UPDATE coupons SET value = ? WHERE id2 = ?", (new_val, row_id))
     elif var_to_use == 6:
         cur.execute("SELECT min FROM coupons WHERE id2 = ?", (row_id,))
@@ -507,7 +526,7 @@ def update_coupon():
     elif var_to_use == 7:
         cur.execute("SELECT max FROM coupons WHERE id2 = ?", (row_id,))
         old_val = cur.fetchone()
-        new_val = check_numeric("What is the maximum number of times this coupon may be applied? (Default is infinite) ", False, "float")
+        new_val = check_numeric("What is the maximum number of times this coupon may be applied? (Default is infinite) ", True, "float")
         if new_val == "not_numeric" or not new_val:
             new_val = "0"
         cur.execute("UPDATE coupons SET max = ? WHERE id2 = ?", (new_val, row_id))
@@ -515,15 +534,11 @@ def update_coupon():
         cur.execute("SELECT doubled FROM coupons WHERE id2 = ?", (row_id,))
         old_val = cur.fetchone()
         new_val = get_true("Should this coupon be doubled? (Default is no) ", 0)
-        if new_val == 2:
-            return "Invalid coupon doubling."
         cur.execute("UPDATE coupons SET doubled = ? WHERE id2 = ?", (new_val, row_id))
     elif var_to_use == 9:
         cur.execute("SELECT disc_card FROM coupons WHERE id2 = ?", (row_id,))
         old_val = cur.fetchone()
         new_val = get_true("Should this coupon be exclusive to rewards card members? (Default is no) ", 0)
-        if new_val == 2:
-            return "Invalid rewards cselected_roward exclusivity."
         cur.execute("UPDATE coupons SET disc_card = ? WHERE id2 = ?", (new_val, row_id))
     elif var_to_use == 10:
         cur.execute("SELECT expire FROM coupons WHERE id2 = ?", (row_id,))
@@ -562,9 +577,8 @@ def update_coupon():
     else:
         return "Please choose an entry to change."
     old_val = old_val[0]
-    print("""Old value: {}
-    New value: {}""".format(old_val,new_val))
-    decision = get_true("Are you sure you want to make this change? ", 0)
+    print("Old value: {}\nNew value: {}".format(old_val,new_val))
+    decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
     if decision == 1:
         conn.commit()
         finality = "Change saved."
@@ -577,10 +591,169 @@ def update_customer():
     return "This function is under construction. Please check back later."
 
 def update_stock():
-    return "This function is under construction. Please check back later."
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    search = input("What item would you like to view?\nEnter a code or a name, or blank for all: ")
+    rows = view(search, "stock")
+
+    if isinstance(rows, list) == False: # view will return either a list or a string. If it's not a list, there's an error.
+        return rows
+    len_rows = len(rows)
+    if len_rows == 1:
+        selected_row = 0
+        final_row = rows[selected_row]
+        print("Using this entry:\n", final_row)
+    else:
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which entry would you like to modify? ", avail_rows)
+        selected_row = selected_row - 1
+        final_row = rows[selected_row]
+    row_id = final_row[0]
+
+    print("""Which of the following would you like to update:
+        Item name (1)
+        Code (2)
+        If the product is sold by weight (3)
+        Quantity available (4)
+        Low quantity threshold (5)
+        Should the item be restocked (6)
+        Should the cashier specify a quantity (7)
+        Price (8)
+        If the item is subject to sales tax (9)
+        If the item is available with food stamps (10)
+        Should the item yield rewards points (11)
+        Minimum age to purchase the item (12)
+        Discount card price (13)""")
+    options = [*range(1, 14, 1)]
+    var_to_use = get_result("Enter your selection: ", options)
+    if not isinstance(var_to_use, int):
+        return var_to_use
+
+    if var_to_use == 1:                                                # I would just use one cur.execute, but the name is vulnerable to SQL injection.
+        cur.execute("SELECT name FROM stock WHERE id1 = ?", (row_id,)) # Plus, all these different variables need to be treated differently.
+        old_val = cur.fetchone()    # Setting up for a comparison at the end.
+        new_val = input("What is the new name of the item? ")
+        cur.execute("UPDATE stock SET name = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 2:
+        cur.execute("SELECT code FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_codes("What is the new item code? ")
+        if new_val == "exists":
+            return "Invalid item code."
+        cur.execute("UPDATE stock SET code = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 3:
+        cur.execute("SELECT weigh FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Should the item be sold by weight? (Default is no) ", 0)
+        cur.execute("SELECT spec_quant FROM stock WHERE id1 = ?", (row_id,))
+        spec_quant = cur.fetchone()
+        spec_quant = spec_quant[0] # Even with fetchone, it returns a tuple. This extracts the value.
+        if spec_quant == 0 and new_val == 1:
+            should = get_true("The cashier must specify a weight on items sold by weight.\nWould you like to continue with this change? (Default is yes) ", 1)
+            if should == 1:
+                cur.execute("UPDATE stock SET spec_quant = 1 WHERE id1 = ?", (row_id,))
+            else:
+                return "This change is too dangerous to perform. Exiting."
+        cur.execute("UPDATE stock SET weigh = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 4:
+        cur.execute("SELECT quan FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("How much/many of this item is in stock? ", False, "float")
+        if new_val == "not_numeric":
+            return "Invalid quantity."
+        cur.execute("UPDATE stock SET quan = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 5:
+        cur.execute("SELECT low_quan FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What is the new low stock threshold? ", False, "float")
+        if new_val == "not_numeric":
+            return "Invalid low stock value."
+        cur.execute("UPDATE stock SET low_quan = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 6:
+        cur.execute("SELECT restock FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Should this item be restocked? (Default is yes) ", 1)
+        cur.execute("UPDATE stock SET restock = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 7:
+        cur.execute("SELECT spec_quant FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Should the cashier specify a quantity of the item? (Default is no) ", 0)
+        cur.execute("SELECT weigh FROM stock WHERE id1  = ?", (row_id,))
+        weigh = cur.fetchone()
+        weigh = weigh[0]
+        if weigh == 0 and new_val == 1:
+            should = get_true("Should this item be sold by weight? (Default is no) ", 0)
+        if weigh == 1 and new_val == 0:
+            should = get_true("Items sold by weight must have a weight specified.\nShould this item be sold by weight? (Default is no) ", 0)
+            if should == 1:
+                return "This change is too dangerous to perform. Exiting."
+        cur.execute("UPDATE stock SET weigh = ? WHERE id1 = ?", (should, row_id))
+        cur.execute("UPDATE stock SET spec_quant = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 8:
+        cur.execute("SELECT price FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What is the price of this item? ", False, "float")
+        if new_val == "not_numeric":
+            return "Invalid price."
+        cur.execute("UPDATE stock SET price = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 9:
+        cur.execute("SELECT tax FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Is this item subject to sales tax? (Default is no) ", 0)
+        cur.execute("UPDATE stock SET tax = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 10:
+        cur.execute("SELECT ebt FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Is this item available to puchase with food stamps? (Default is no) ", 0)
+        cur.execute("UPDATE stock SET ebt = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 11:
+        cur.execute("SELECT re_points FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_true("Does purchasing this item count towards rewards points? (Default is yes) ", 1)
+        cur.execute("UPDATE stock SET re_points = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 12:
+        cur.execute("SELECT age FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What is the minimum age to purchase this item? (Default is 0) ", True, "int")
+        if not new_val or new_val == "not_numeric":
+            new_val = 0
+        cur.execute("UPDATE stock SET age = ? WHERE id1 = ?", (new_val, row_id))
+    elif var_to_use == 13:
+        cur.execute("SELECT disc_price FROM stock WHERE id1 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What should the rewards card price be? Default is same as regular price: ", True, "float")
+        cur.execute("SELECT price FROM stock WHERE id1 = ?", (row_id,))
+        normal_price = cur.fetchone()
+        normal_price = normal_price[0]
+        if new_val and not new_val == "not_numeric" and normal_price < new_val:
+            print("The specified rewards card price of {} is higher than the normal price of {}.".format(new_val, normal_price))
+            should = get_true("Would you like to make the rewards card price the same as the normal price? (Default is yes) ", 1)
+            if should == 1:
+                new_val = normal_price
+        if not new_val or new_val == "not_numeric":
+            cur.execute("SELECT price FROM stock WHERE id1 = ?", (row_id,))
+            new_val = cur.fetchone()
+            new_val = new_val[0]
+    else:
+        return "Please choose an entry to change."
+    old_val = old_val[0]
+    print("Old value: {}\nNew value: {}".format(old_val,new_val))
+    decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
+    if decision == 1:
+        conn.commit()
+        finality = "Change saved."
+    else:
+        finality = "Change not saved."
+    conn.close()
+    return finality
 
 print("What do you want to do?")
-command = input("Available: view, insert ").lower()
+command = input("Available: view, insert, update ").lower()
 if command == "view":
     command0 = input("What table would you like to view (coupon, cards, or stock)? ")
     if command0 == "coupon" or command0 == "coupons":
@@ -604,5 +777,13 @@ elif command == "insert":
         print(insert_product())
     else:
         print("Invalid command.")
+elif command == "update":
+    command0 = input("coupon, customer, or product? ")
+    if command0 == "coupon":
+        print(update_coupon())
+    elif command0 == "customer" or command0 == "card":
+        print(update_customer())
+    elif command0 == "product" or command0 == "stock":
+        print(update_stock())
 else:
     print("Sorry, that command doesn't exist (yet).")
