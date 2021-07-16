@@ -58,9 +58,8 @@ def generate_code(ttype):
         cur.execute("SELECT MAX(code) FROM stock")
     else:
         return "invalid_table"
-    maxcode = cur.fetchall()        # This returns a list with a single tuple,
-    maxcode = maxcode[0]            # which contains a single number. This [0]
-    maxcode = int(maxcode[0])       # business is extracting that one number.
+    maxcode = cur.fetchone()        # This will give us a tuple with one entry.
+    maxcode = int(maxcode[0])       # This line extracts the entry and converts it to an int.
     maxcode = maxcode + 1           # + 1 saves it from running that loop more than needed.
     while dupe == 1:
         cur.execute("SELECT code FROM coupons WHERE code = ?", (maxcode,))
@@ -242,7 +241,7 @@ def view(search, table):
             if search0 == 1:
                 cur.execute("SELECT * FROM cards WHERE fname LIKE ? COLLATE NOCASE", (search,))
             elif search0 == 2:
-                cur.execute("SELECT * FROM cards WHERE fname LIKE ? COLLATE NOCASE", (search,))
+                cur.execute("SELECT * FROM cards WHERE lname LIKE ? COLLATE NOCASE", (search,))
             else:
                 return search0
         else:
@@ -588,7 +587,84 @@ def update_coupon():
     return finality
 
 def update_customer():
-    return "This function is under construction. Please check back later."
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    search = input("What customer would you like to view?\nEnter a code or a name, or blank for all: ")
+    rows = view(search, "cards")
+
+    if isinstance(rows, list) == False:
+        return rows
+    len_rows = len(rows)
+    if len_rows == 1:
+        selected_row = 0
+        final_row = rows[selected_row]
+        print("Using this entry:\n", final_row)
+    else:
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which entry would you like to modify? ", avail_rows)
+        selected_row = selected_row - 1
+        final_row = rows[selected_row]
+    row_id = final_row[0]
+
+    print("""Which of the following would you like to update:
+        First name (1)
+        Last name (2)
+        Phone number (3)
+        Code (4)
+        Rewards points balance (5)""")
+    options = [*range(1, 6, 1)]                                 # The second number has to be 1 greater than the intended size,
+    var_to_use = get_result("Enter your selection: ", options)  # otherwise it won't let you use the last option.
+    if not isinstance(var_to_use, int):
+        return var_to_use
+
+    if var_to_use == 1:                                                 
+        cur.execute("SELECT fname FROM cards WHERE id3 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = input("What is the customer's first name? ")
+        cur.execute("UPDATE cards SET fname = ? WHERE id3 = ?", (new_val, row_id))
+    elif var_to_use == 2:
+        cur.execute("SELECT lname FROM cards WHERE id3 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = input("What is the customer's last name? ")
+        cur.execute("UPDATE cards SET lname = ? WHERE id3 = ?", (new_val, row_id))
+    elif var_to_use == 3:
+        cur.execute("SELECT phone FROM cards WHERE id3 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_phone()
+        if new_val == "exists":
+            return "Invalid phone number."
+        cur.execute("UPDATE cards SET phone = ? WHERE id3 = ?", (new_val, row_id))
+    elif var_to_use == 4:
+        cur.execute("SELECT code FROM cards WHERE id3 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_codes("What should the customer's card code be? ")
+        if new_val == "exists":
+            return "Code already in use. Please select another one."
+        cur.execute("UPDATE cards SET code = ? WHERE id3 = ?", (new_val, row_id))
+    elif var_to_use == 5:
+        cur.execute("SELECT points FROM cards WHERE id3 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What should be the customer's rewards point balance? ", False, "int")
+        if new_val == "not_numeric":
+            return "Invalid rewards points value."
+        cur.execute("UPDATE cards SET points = ? WHERE id3 = ?", (new_val, row_id))
+    else:
+        return "Please choose an entry to change."
+    old_val = old_val[0]
+    print("Old value: {}\nNew value: {}".format(old_val,new_val))
+    decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
+    if decision == 1:
+        conn.commit()
+        finality = "Change saved."
+    else:
+        finality = "Change not saved."
+    conn.close()
+    return finality
 
 def update_stock():
     conn = sqlite3.connect("store.db")

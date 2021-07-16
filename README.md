@@ -108,6 +108,17 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.010
+- view now actually searches for last names when specified.
+
+- generate_code now uses fetchone instead of fetchall.
+  This gives a tuple containing a single integer,
+  rather than a list containing a tuple containing a single integer.
+
+- Added update_customer
+  This will allow the user to change anything about the customer's
+  rewards program account without having to play with SQL.
+
 ### Version 0.09
 - Updated update_coupon
   update_coupon now checks to see if the coupon value is greater
