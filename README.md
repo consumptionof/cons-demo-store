@@ -108,6 +108,41 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.011
+- Added insert_employee
+  You can now add employees to a table. This will store their
+  basic information. For the moment, it only stores their name,
+  account type, login, and passcode.
+- Added update_employee
+  This, like the other update functions, will allow you to
+  change whatever variables you'd like about an employee.
+  (Please do not change the last remaining manager account
+  to a cashier account, otherwise you will no longer
+  be able to update the inventory without manually changing 
+  the account type in the database.)
+- Added login
+  This function asks for a login number and passcode.
+  The inventory control will require a manager account to use
+  from now on.
+- Added inventory_frontend.py
+  This program will let you use the primary functions
+  in inventory_backend.py. I probably should have made
+  this program way sooner, but you could say that about
+  a lot of this program's features.
+- The interface now has you select which type of data
+  you'd like to view/update rather than asking
+  what you want to do, then what you want to manipulate.
+- view now searches for employees.
+  Sidenote: Please do not name any of your employees anything
+  containing "cashier"  or "manager", as this will break
+  the view function.
+- stop_dupe now checks for employee information.
+- The inventory backend now requires getpass.
+- initial.py now creates the employees table,
+  and creates a manager account at setup.
+- The interface now uses get_result instead of having
+  keywords.
+
 ### Version 0.010
 - view now actually searches for last names when specified.
 

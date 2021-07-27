@@ -3,6 +3,7 @@ from sqlite3.dbapi2 import Cursor
 import dateutil.parser as parser
 from datetime import datetime, timedelta
 import re
+import getpass
 
 def get_true(request, default):
     iter = 0
@@ -19,7 +20,7 @@ def get_true(request, default):
             else:
                 print("Invalid input.")
                 iter = iter + 1
-        elif not digit and (default == 0 or default == 1):
+        elif not digit:
             print("Using default...")
             result = default
             iter = 3
@@ -93,6 +94,8 @@ def stop_dupe(request, table, column):
                 cur.execute("SELECT * FROM cards WHERE ? LIKE ?", (column, digit))
             elif table == "stock":
                 cur.execute("SELECT * FROM stock WHERE ? LIKE ?", (column, digit))
+            elif table == "employees":
+                cur.execute("SELECT * FROM employees WHERE ? LIKE ?", (column, digit))
             else:
                 return "table_not_exists"
             exists = cur.fetchall()
@@ -196,6 +199,45 @@ def check_numeric(request,cannull,numtyp):
         print("Using default value...")
     return result
 
+def login():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    correct = 0
+    uname = ""
+    passcode = ""
+    while correct == 0:
+        while not uname:
+            uname = input("Enter your login code: ")
+            try:
+                uname = int(uname)
+            except ValueError:
+                print("Please enter an integer.")
+                uname = ""
+        while not passcode:
+            passcode = getpass.getpass("Enter your passcode: ")
+            try:
+                passcode = int(passcode)
+            except ValueError:
+                print("Please enter an integer.")
+                passcode = ""
+        cur.execute("SELECT passcode FROM employees WHERE login = ?", (uname,))
+        check = cur.fetchone()
+        if check:
+            check = check[0] # Still have to extract that thing.
+            if passcode == check:
+                cur.execute("SELECT fname, lname, actype FROM employees WHERE login = ?", (uname,))
+                info = cur.fetchall()
+                info = info[0]
+                return info
+            else:
+                uname = ""      # You need to do this, otherwise it'll just go
+                passcode = ""   # "Incorrect password" forever.
+                print("Incorrect password.")
+        else:
+            uname = ""
+            passcode = ""
+            print("User does not exist.")
+
 def view(search, table):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
@@ -246,6 +288,35 @@ def view(search, table):
                 return search0
         else:
             cur.execute("SELECT * FROM cards")
+    elif table == "employees":
+        if numeric_search:
+            search0 = get_result("Is this a type of account (1), a login code (2), or a passcode (3)? ", [1,2,3])
+            if search0 == 1:
+                cur.execute("SELECT * FROM employees WHERE actype = ?", (search,))
+            elif search0 == 2:
+                cur.execute("SELECT * FROM employees WHERE login = ?", (search,))
+            elif search0 == 3:
+                cur.execute("SELECT * FROM employees WHERE pass = ?", (search,))
+            else:
+                return search0
+        elif search:
+            if "cashier" in search:
+                cur.execute("SELECT * FROM employees WHERE actype = 1")
+            elif "manager" in search:
+                cur.execute("SELECT * FROM employees WHERE actype = 2")
+            else:
+                search = "%"+search+"%"
+                search0 = get_result("Is this a first name (1), or a last name(2)? ", [1,2])
+                if search0 == 1:
+                    cur.execute("SELECT * FROM employees WHERE fname LIKE ? COLLATE NOCASE", (search,))
+                elif search0 == 2:
+                    cur.execute("SELECT * FROM employees WHERE lname LIKE ? COLLATE NOCASE", (search,))
+                else:
+                    return search0
+        else:
+            cur.execute("SELECT * FROM employees")
+    else:
+        return "Invalid table. Please review the program and report to the developer."
     rows = cur.fetchall()
     conn.close()
     if not rows:
@@ -418,6 +489,42 @@ def insert_product():
         Minimum age to purchase: {}
         Store card discounted price: {}""".format(name, code, weigh, quan, low_quan,
         restock, spec_quant, price, tax, ebt, re_points, age, disc_price))
+
+def insert_employee():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    fname = input("What is the employee's first name? ")
+    lname = input("What is the employee's last name? ")
+    cur.execute("SELECT * FROM employees WHERE fname LIKE ? AND lname LIKE ? COLLATE NOCASE", (fname, lname))
+    same = cur.fetchall()
+    if same:
+        if fname in same[0] and lname in same[0]:
+            print("This user appears to already exist:\n{}".format(same))
+            confirm = get_true("Would you like to create the account anyway? (Default is no) ", 0)
+            if confirm == 0:
+                return "User already exists. Exiting."
+    actype = get_result("Is this employee a cashier (1) or a manager (2)? ", [1, 2])
+    if actype == "wrong":
+        return "Invalid account type."
+    if actype == 1:
+        text_actype = "Cashier"
+    else:
+        text_actype = "Manager"
+    login = stop_dupe("What is the user's login code? ", "employees", "login")
+    if login == "item_exists":
+        return "Login code already exists. Exiting."
+    passcode = check_numeric("What is the user's passcode? (Default is same as login code) ", True, "int")
+    if passcode == "not_numeric": # pass is already a Python thing, so I'm using this instead.
+        passcode = login
+    cur.execute("INSERT INTO employees VALUES (NULL,?,?,?,?,?)", (fname, lname, actype, login, passcode))
+    conn.commit()
+    conn.close()
+    return """Inserted employee:
+    First name: {}
+    Last name: {}
+    Account type: {}
+    Login code: {}
+    Passcode: {}""".format(fname,lname,text_actype,login,passcode)
 
 def update_coupon():
     conn = sqlite3.connect("store.db")
@@ -828,38 +935,84 @@ def update_stock():
     conn.close()
     return finality
 
-print("What do you want to do?")
-command = input("Available: view, insert, update ").lower()
-if command == "view":
-    command0 = input("What table would you like to view (coupon, cards, or stock)? ")
-    if command0 == "coupon" or command0 == "coupons":
-        prompt = input("What coupon would you like to view? (Blank for all) ")
-        print(view(prompt,"coupons"))
-    elif command0 == "products" or command0 == "product" or command0 == "stock":
-        prompt = input("What item would you like to search for? (Blank for all) ")
-        print(view(prompt,"stock"))
-    elif command0 == "cards" or command0 == "card" or command0 == "customer" or command0 == "customers":
-        prompt = input("What customer would you like to search for? (Blank for all) ")
-        print(view(prompt,"cards"))
+def update_employee():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    search = input("What employee/type would you like to view?\nEnter a code or a name, or blank for all: ")
+    rows = view(search, "employees")
+
+    if isinstance(rows, list) == False:
+        return rows
+    len_rows = len(rows)
+    if len_rows == 1:
+        selected_row = 0
+        final_row = rows[selected_row]
+        print("Using this entry:\n", final_row)
     else:
-        print("Invalid command.")
-elif command == "insert":
-    command0 = input("coupon, customer, or product? ").lower()
-    if command0 == "coupon":
-        print(insert_coupon())
-    elif command0 == "customer" or command0 == "card":
-        print(insert_customer())
-    elif command0 == "product" or command0 == "stock":
-        print(insert_product())
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which entry would you like to modify? ", avail_rows)
+        selected_row = selected_row - 1
+        final_row = rows[selected_row]
+    row_id = final_row[0]
+
+    print("""Which of the following would you like to update:
+        First name (1)
+        Last name (2)
+        Account type (3)
+        Login code (4)
+        Passcode (5)""")
+    options = [*range(1, 6, 1)]                                 # The second number has to be 1 greater than the intended size,
+    var_to_use = get_result("Enter your selection: ", options)  # otherwise it won't let you use the last option.
+    if not isinstance(var_to_use, int):
+        return var_to_use
+
+    if var_to_use == 1:                                                 
+        cur.execute("SELECT fname FROM employees WHERE id4 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = input("What is the employee's first name? ")
+        cur.execute("UPDATE employees SET fname = ? WHERE id4 = ?", (new_val, row_id))
+    elif var_to_use == 2:
+        cur.execute("SELECT lname FROM employees WHERE id4 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = input("What is the employee's last name? ")
+        cur.execute("UPDATE employees SET lname = ? WHERE id4 = ?", (new_val, row_id))
+    elif var_to_use == 3:
+        cur.execute("SELECT actype FROM employees WHERE id4 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = get_result("Is this employee a cashier (1) or a manager (2)? ", [1, 2])
+        if new_val == "wrong":
+            return "Invalid employee type."
+        cur.execute("UPDATE employees SET actype = ? WHERE id4 = ?", (new_val, row_id))
+    elif var_to_use == 4:
+        cur.execute("SELECT login FROM employees WHERE id4 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = stop_dupe("What should the user's login code be? ", "employees", "login")
+        if new_val == "item_exists":
+            return "Login code already exists. Exiting."
+        cur.execute("UPDATE employees SET login = ? WHERE id4 = ?", (new_val, row_id))
+    elif var_to_use == 5:
+        cur.execute("SELECT passcode FROM employees WHERE id4 = ?", (row_id,))
+        old_val = cur.fetchone()
+        new_val = check_numeric("What should be the employee's passcode? (Default is same as login code) ", True, "int")
+        if new_val == "not_numeric":
+            cur.execute("SELECT login FROM employees WHERE id4 = ?", (row_id,))
+            new_val = cur.fetchone()
+            new_val = new_val[0]
+        cur.execute("UPDATE employees SET passcode = ? WHERE id4 = ?", (new_val, row_id))
     else:
-        print("Invalid command.")
-elif command == "update":
-    command0 = input("coupon, customer, or product? ")
-    if command0 == "coupon":
-        print(update_coupon())
-    elif command0 == "customer" or command0 == "card":
-        print(update_customer())
-    elif command0 == "product" or command0 == "stock":
-        print(update_stock())
-else:
-    print("Sorry, that command doesn't exist (yet).")
+        return "Please choose an entry to change."
+    old_val = old_val[0]
+    print("Old value: {}\nNew value: {}".format(old_val,new_val))
+    decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
+    if decision == 1:
+        conn.commit()
+        finality = "Change saved."
+    else:
+        finality = "Change not saved."
+    conn.close()
+    return finality
