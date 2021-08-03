@@ -5,7 +5,7 @@ conn = sqlite3.connect("store.db")
 cur = conn.cursor()
 cur.execute("""
 CREATE TABLE IF NOT EXISTS stock (
-    id1 INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     name TEXT,
     code INT,
     weigh INTEGER,
@@ -18,12 +18,13 @@ CREATE TABLE IF NOT EXISTS stock (
     ebt INTEGER,
     re_points INTEGER,
     age INTEGER,
-    disc_price REAL
+    disc_price REAL,
+    department TEXT
     )
 """)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS coupons (
-    id2 INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     name TEXT,
     code INTEGER,
     item_code INTEGER,
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS coupons (
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS cards (
-    id3 INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     fname TEXT,
     lname TEXT,
     phone INTEGER,
@@ -51,7 +52,7 @@ CREATE TABLE IF NOT EXISTS cards (
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS employees(
-    id4 INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     fname TEXT,
     lname TEXT,
     actype INTEGER,

@@ -108,6 +108,21 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.012
+- Added view_mech
+  This is a new version of view intended mainly for the program
+  itself to search for something. The old view is being kept
+  as there isn't that much wrong with it. It is a little limited,
+  and difficult to automate, so view_mech will fill that niche.
+- Updated store.db
+  Now, instead of the first columns being called "id1," "id2," etc.,
+  they're all just "id." I don't know why I rolled with that for so long.
+  But in any case, the program no longer uses "id1" or "id2" either.
+- Added departments to the stock table
+  This will make it easier to organize in the future, when the
+  register will search for things by department.
+  The initial.py script also includes the department column now.
+
 ### Version 0.011
 - Added insert_employee
   You can now add employees to a table. This will store their
