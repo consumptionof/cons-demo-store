@@ -1,3 +1,5 @@
+from sqlite3.dbapi2 import SQLITE_DROP_VIEW
+from core_backend import stop_dupe
 from inventory_backend import check_numeric
 import sqlite3
 
@@ -19,7 +21,7 @@ CREATE TABLE IF NOT EXISTS stock (
     re_points INTEGER,
     age INTEGER,
     disc_price REAL,
-    department TEXT
+    department INTEGER
     )
 """)
 cur.execute("""
@@ -60,6 +62,21 @@ CREATE TABLE IF NOT EXISTS employees(
     passcode INTEGER
 )
 """)
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS store_data(
+    store_id INTEGER PRIMARY KEY,
+    name TEXT,
+    sales_tax REAL
+)
+""")
+
+store_name = input("What is the name of the store? ")
+sales_tax = "not_numeric"
+while isinstance(sales_tax, str):
+    sales_tax = check_numeric("What is the sales tax (expressed as a decimal, like 0.08)? ", False, "float")
+cur.execute("INSERT INTO store_data VALUES (NULL,?,?)", (store_name, sales_tax))
+
 is_login_numeric = 0
 is_passcode_numeric = 0
 fname = input("What is the initial manager's name? ")

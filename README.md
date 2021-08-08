@@ -108,6 +108,24 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.013
+- Added core_backend.py
+  This file will house the essential functions like check_numeric
+  and get_true for both the inventory and register backends.
+- Added register_backend.py
+  This will house the programs needed only for the register.
+  For example, a register will need to add things to the
+  transaction, while the inventory system has no use for such
+  a thing.
+- Added the store_data table during database creation
+  For now, this table only holds the store name and the sales tax
+  applicable to the current store.
+- Added current_trans and current_trans_meta for use in transactions
+  current_trans holds all the items and coupons requested by
+  the customer, while current_trans_meta contains the cashier's
+  name and ID, whether or not the discount card is in use,
+  and the customer's birthdate.
+
 ### Version 0.012
 - Added view_mech
   This is a new version of view intended mainly for the program
