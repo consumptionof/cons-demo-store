@@ -108,6 +108,20 @@ currently tracks the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.014
+- Added search_coupon and process_coupon
+  These functions do what their names suggest -- search for
+  coupons given some criteria, and insert them into
+  the current products table. They're set up so that, even if
+  there are multiples of the same item in the current_trans table,
+  it'll process the coupon to account for all of them.
+- Added search_card_by_phone and process_card
+  These do the same as the previous functions, but for
+  customers instead. When a customer is selected, their
+  phone number will be recorded in current_trans_meta.
+- locate_by_code now searches for cards, coupons, and stock,
+  instead of just stock.
+  
 ### Version 0.013
 - Added core_backend.py
   This file will house the essential functions like check_numeric

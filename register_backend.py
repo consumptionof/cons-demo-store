@@ -10,7 +10,7 @@ def check_age(req_age, birthdate):
     dt = datetime.now()
     td = relativedelta(years=-req_age)
     procdate = dt + td
-    if not birthdate or birthdate == 0:
+    if birthdate == 0 or birthdate == "0":
         birthdate = input("What is the customer's birthdate? (YYYY-MM-DD) ")
     birthdate = parser.parse(birthdate)
     if birthdate < procdate:
@@ -57,13 +57,14 @@ def search_product(cashier):
         selected_row = get_result("Which item would you like to add? ", avail_rows)
         selected_row = selected_row - 1
         chosen_row = rows[selected_row]
-        final_data = process_item(chosen_row, cashier)
+    final_data = process_item(chosen_row, cashier)
     return final_data
 
 def process_item(item_data, cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    pname = item_data[1]        # I figured it's better for readability, and my own comprehension,
+    pname = item_data[1]        
+    item_code = item_data[2]    # I figured it's better for readability, and my own comprehension,
     weigh = item_data[3]        # to use all these variable names rather than repeatedly referencing
     available = item_data[4]    # final_row over and over.
     spec_quant = item_data[7]
@@ -114,13 +115,15 @@ def process_item(item_data, cashier):
     except TypeError:
         is_disc = 0
         price_delta = 0
-    final_price = (price - price_delta) * user_weight
+    final_price_delta = price_delta * user_weight
+    final_price = (price * user_weight) - final_price_delta
     final_price = round(final_price,2)
     if tax:
         cur.execute("SELECT sales_tax FROM store_data WHERE store_id = 1")
         sales_tax = cur.fetchone()
         sales_tax = sales_tax[0]
         product_tax = sales_tax * final_price
+        product_tax = round(product_tax,2)
     else:
         product_tax = 0
     if ebt:
@@ -129,18 +132,202 @@ def process_item(item_data, cashier):
         ebt_price = 0
     if re_points:
         points = final_price
-    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?)", (pname, user_weight, price, final_price, product_tax, ebt_price, points, price_delta))
+    else:
+        points = 0
+    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
+    (pname, item_code, user_weight, price, final_price, product_tax, ebt_price, points, final_price_delta, 0))
     conn.commit()
     conn.close()
     return "Added %s" % pname
 
-def locate_product_by_code():
+def search_coupon(cashier):
+    coupon_type = get_result("Do you want to search for a coupon name (1) or a code affected by the coupon (2)? ", [1, 2])
+    if coupon_type == 1:
+        search = input("Enter a part of the coupon's name (Blank for all): ")
+    elif coupon_type == 2:
+        search = input("Enter a part of the affected item's code (Blank for all): ")
+        coupon_type = 3     # If this isn't done, it'll search for the coupon's code, not the item code.
+    rows = view_mech(search, "coupons", coupon_type)
+    inter_rows = []
+    if isinstance(rows,list) == False:
+        return rows
+    dt = datetime.now()
+    for i in rows:
+        expire = i[10]
+        try:
+            expire = int(expire)        # Is expire 0? For some reason, this is
+            inter_rows.append(i)        # the first method for finding this that's worked.
+        except ValueError:              # If not, then it's an expiration date.
+            coupon_date = datetime.fromisoformat(expire)
+            if coupon_date > dt:
+                inter_rows.append(i)    # Only uses entries that haven't expired.
+        rows = inter_rows
+    len_rows = len(rows)
+    if len_rows == 1:
+        chosen_row = rows[0]
+    else:
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which coupon would you like to add? ", avail_rows)
+        selected_row = selected_row - 1
+        chosen_row = rows[selected_row]
+    final_data = process_coupon(chosen_row, cashier)
+    return final_data
+
+def process_coupon(coupon_data, cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    coupon_name = coupon_data[1]
+    coupon_code = coupon_data[2]
+    affected_code = coupon_data[3]
+    coupon_type = coupon_data[4]
+    coupon_discount = coupon_data[5]
+    minimum = coupon_data[6] 
+    max_apps = coupon_data[7]
+    doubled = coupon_data[8]
+    disc_card = coupon_data[9]
+    point_cost = coupon_data[11]
+    cur.execute("SELECT * FROM current_trans WHERE icode = ?", (affected_code,))
+    matches = cur.fetchall()
+    if not matches:
+        return "Coupon must match previous sale."
+    if disc_card:
+        cur.execute("SELECT disc_card FROM current_trans_meta WHERE cashier = ?", (cashier,))
+        is_card = cur.fetchone()
+        is_card = is_card[0]
+        is_card = int(is_card)
+        if not is_card:
+            return "This coupon requires a rewards card."
+    if point_cost:
+        cur.execute("SELECT points FROM cards WHERE phone = ?", (is_card,))
+        available_points = cur.fetchone()
+        available_points = available_points[0]
+        if point_cost > available_points:
+            return "Not enough points for this coupon."
+    total_items = 0
+    total_price = 0
+    total_ebt = 0
+    total_rewards = 0
+    total_tax = 0
+    match_count = len(matches)
+    for i in range(0, match_count):                 # Adds up all the instances of an item, and then
+        prov_list = matches[i]                      # adds one coupon with each total.
+        total_items = total_items + prov_list[3]    # Turns out you can't just do "for i in matches"
+        total_price = total_price + prov_list[5]    # # because it's a list of tuples. Who would have guessed?
+        total_tax = total_tax + prov_list[6]
+        total_ebt = total_ebt + prov_list[7]
+        total_rewards = total_rewards + prov_list[8]
+    if total_items < minimum:
+        return "Not enough items for coupon."
+    if max_apps and total_items >= max_apps:
+        total_apps = max_apps
+    else:
+        total_apps = total_items
+    if coupon_type == 1:
+        price_delta = -(coupon_discount * total_apps)
+    elif coupon_type == 2:
+        price_delta = -(total_price * coupon_discount)
+    else:
+        interim = coupon_discount * total_items
+        price_delta = interim - total_price
+    price_delta = round(price_delta,2)
+    if total_tax:
+        cur.execute("SELECT sales_tax FROM store_data WHERE store_id = 1")
+        tax_discount = cur.fetchone()
+        tax_discount = tax_discount[0]
+        tax_discount = (tax_discount * price_delta)
+        tax_discount = round(tax_discount,2)
+    else:
+        tax_discount = 0
+    if total_rewards:
+        coupon_rewards = price_delta
+    else:
+        coupon_rewards = 0
+    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
+    (coupon_name, coupon_code, total_apps, coupon_discount, price_delta,
+    tax_discount, total_ebt, coupon_rewards, price_delta, point_cost))
+    if doubled:
+        cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        ("Doubled coupon", coupon_code, total_apps, coupon_discount, price_delta,
+        tax_discount, total_ebt, total_rewards, price_delta, point_cost))
+    conn.commit()
+    conn.close()
+    return "Added coupon: %s" % coupon_name
+
+def process_card(customer, cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    fname = customer[1]
+    lname = customer[2]
+    phone = customer[3]
+    cust_code = customer[5]
+    cur.execute("SELECT disc_card FROM current_trans_meta WHERE cashier = ?", (cashier,))
+    old_phone = cur.fetchone()
+    if old_phone:
+        cur.execute("SELECT points FROM cards WHERE code = ?", (cust_code,))
+        cust_points = cur.fetchone()
+        try:
+            cust_points = cust_points[0]
+        except TypeError:
+            cust_points = 0
+        cur.execute("SELECT req_points FROM current_trans")
+        trans_points = cur.fetchall()
+        num_of_items = len(trans_points)
+        total_points = 0
+        for i in range(0, num_of_items):
+            prov_points = trans_points[i]
+            prov_points = prov_points[0]
+            total_points = total_points + prov_points
+        if total_points > cust_points:
+            print("Insufficient points for coupons. Removing points coupons.")
+            cur.execute("DELETE FROM current_trans WHERE req_points > 0")
+    cur.execute("UPDATE current_trans_meta SET disc_card = ? WHERE cashier = ?", (phone, cashier))
+    conn.commit()
+    conn.close()
+    return "Welcome %s %s to the store." % (fname, lname)
+
+def search_card_by_phone(cashier):
+    phone = input("What is the customer's phone number? (Blank to view all) ")
+    rows = view_mech(phone, "cards", 3)
+    len_rows = len(rows)
+    if len_rows == 1:
+        chosen_row = rows[0]
+    else:
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which item would you like to add? ", avail_rows)
+        selected_row = selected_row - 1
+        chosen_row = rows[selected_row]
+    final_data = process_card(chosen_row, cashier)
+    return final_data
+
+def locate_by_code(cashier):
     conn = sqlite3.connect("store.db")      # This needs its own function since
     cur = conn.cursor()                     # view_mech returns several results in a list.
-    search = input("Enter the item code: ")
-    cur.execute("SELECT * FROM stock WHERE code = ?", (search,))
-    result = cur.fetchone()
+    search = input("Enter the code: ")      # This is supposed to find an exact match.
+    queries = ["SELECT * FROM stock WHERE code = ?",
+    "SELECT * FROM coupons WHERE code = ?",
+    "SELECT * FROM cards WHERE code = ?"]
+    for i in range(0, 3):
+        cur.execute(queries[i], (search,))
+        result = cur.fetchone()
+        if result and i == 0:
+            finality = process_item(result,cashier)     # Maybe not the most elegant way of doing it,
+            break                                       # but it beats a bunch of nested if statements.
+        if result and i == 1:
+            finality = process_coupon(result,cashier)
+            break
+        if result and i == 2:
+            finality = process_card(result,cashier)
+            break
     if not result:
-        return "Item not found."
-    else:
-        return result
+        finality = "Item not found."
+    return finality
