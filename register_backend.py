@@ -19,6 +19,8 @@ def check_age(req_age, birthdate):
         return ["illegal", birthdate]
 
 def search_product(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
     dept = get_result("What kind of item is this: All (1), Produce (2), Meat (3), Deli (4),\nFrozen (5), Grocery (6), Miscellaneous (7)? ", [1, 2, 3, 4, 5, 6, 7])
     if dept == "wrong":
         print("Searching in all departments.")
@@ -35,10 +37,16 @@ def search_product(cashier):
         search = str(search)
     else:
         return "Invalid search."
-    rows = view_mech(search, "stock", search_type)
+    search = "%"+search+"%"
+    if search_type == 1:
+        cur.execute("SELECT * FROM stock WHERE name LIKE ? COLLATE NOCASE", (search,))
+    else:
+        cur.execute("SELECT * FROM stock WHERE code LIKE ?", (search,))
+    rows = cur.fetchall()
     inter_rows = []
-    if isinstance(rows,list) == False:
-        return rows
+    if not isinstance(rows,list):
+        search = re.sub("%","",search)
+        return "No results for %s." % search
     if not dept == 7:
         for i in rows:
             if i[14] == dept:
@@ -134,20 +142,25 @@ def process_item(item_data, cashier):
         points = final_price
     else:
         points = 0
-    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
-    (pname, item_code, user_weight, price, final_price, product_tax, ebt_price, points, final_price_delta, 0))
+    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
+    (pname, item_code, user_weight, price, final_price, product_tax, ebt_price, points, final_price_delta, 0, item_code))
     conn.commit()
     conn.close()
     return "Added %s" % pname
 
 def search_coupon(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
     coupon_type = get_result("Do you want to search for a coupon name (1) or a code affected by the coupon (2)? ", [1, 2])
     if coupon_type == 1:
-        search = input("Enter a part of the coupon's name (Blank for all): ")
+        search = input("Enter (a part of) the coupon's name (Blank for all): ")
+        search = "%"+search+"%"
+        cur.execute("SELECT * FROM coupons WHERE name LIKE ? COLLATE NOCASE", (search,))
     elif coupon_type == 2:
-        search = input("Enter a part of the affected item's code (Blank for all): ")
-        coupon_type = 3     # If this isn't done, it'll search for the coupon's code, not the item code.
-    rows = view_mech(search, "coupons", coupon_type)
+        search = input("Enter (a part of) the affected item's code (Blank for all): ")
+        search = "%"+search+"%"
+        cur.execute("SELECT * FROM coupons WHERE item_code LIKE ?", (search,))
+    rows = cur.fetchall()
     inter_rows = []
     if isinstance(rows,list) == False:
         return rows
@@ -190,11 +203,19 @@ def process_coupon(coupon_data, cashier):
     max_apps = coupon_data[7]
     doubled = coupon_data[8]
     disc_card = coupon_data[9]
+    expire = coupon_data[10]
     point_cost = coupon_data[11]
     cur.execute("SELECT * FROM current_trans WHERE icode = ?", (affected_code,))
     matches = cur.fetchall()
     if not matches:
         return "Coupon must match previous sale."
+    dt = datetime.now()             # I only recently realized that the
+    try:                            # search by code function doesn't check expirations.
+        expire = int(expire)        # Is expire 0?
+    except ValueError:              # If not, then it's an expiration date.
+        coupon_date = datetime.fromisoformat(expire)
+        if coupon_date < dt:
+            return "This coupon is expired."
     if disc_card:
         cur.execute("SELECT disc_card FROM current_trans_meta WHERE cashier = ?", (cashier,))
         is_card = cur.fetchone()
@@ -247,13 +268,13 @@ def process_coupon(coupon_data, cashier):
         coupon_rewards = price_delta
     else:
         coupon_rewards = 0
-    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
-    (coupon_name, coupon_code, total_apps, coupon_discount, price_delta,
-    tax_discount, total_ebt, coupon_rewards, price_delta, point_cost))
+    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
+    (coupon_name, affected_code, total_apps, coupon_discount, price_delta,
+    tax_discount, total_ebt, coupon_rewards, price_delta, point_cost, coupon_code))
     if doubled:
-        cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?)",
-        ("Doubled coupon", coupon_code, total_apps, coupon_discount, price_delta,
-        tax_discount, total_ebt, total_rewards, price_delta, point_cost))
+        cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
+        ("Doubled coupon", affected_code, total_apps, coupon_discount, price_delta,
+        tax_discount, total_ebt, total_rewards, price_delta, point_cost, coupon_code))
     conn.commit()
     conn.close()
     return "Added coupon: %s" % coupon_name
@@ -291,8 +312,13 @@ def process_card(customer, cashier):
     return "Welcome %s %s to the store." % (fname, lname)
 
 def search_card_by_phone(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
     phone = input("What is the customer's phone number? (Blank to view all) ")
-    rows = view_mech(phone, "cards", 3)
+    phone = str(phone)      # You can never be too sure.
+    phone = "%"+phone+"%"
+    cur.execute("SELECT * FROM cards WHERE phone LIKE ?", (phone,))
+    rows = cur.fetchall()
     len_rows = len(rows)
     if len_rows == 1:
         chosen_row = rows[0]
@@ -303,16 +329,16 @@ def search_card_by_phone(cashier):
             seq = seq + 1
         len_rows = len_rows + 1
         avail_rows = [*range(1, len_rows, 1)]
-        selected_row = get_result("Which item would you like to add? ", avail_rows)
+        selected_row = get_result("Which account would you like to add? ", avail_rows)
         selected_row = selected_row - 1
         chosen_row = rows[selected_row]
     final_data = process_card(chosen_row, cashier)
     return final_data
 
 def locate_by_code(cashier):
-    conn = sqlite3.connect("store.db")      # This needs its own function since
-    cur = conn.cursor()                     # view_mech returns several results in a list.
-    search = input("Enter the code: ")      # This is supposed to find an exact match.
+    conn = sqlite3.connect("store.db")      # Know the code of an item and don't
+    cur = conn.cursor()                     # want to jump through too many hoops?
+    search = input("Enter the code: ")      # This function is for you.
     queries = ["SELECT * FROM stock WHERE code = ?",
     "SELECT * FROM coupons WHERE code = ?",
     "SELECT * FROM cards WHERE code = ?"]
@@ -331,3 +357,59 @@ def locate_by_code(cashier):
     if not result:
         finality = "Item not found."
     return finality
+
+def void():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    entry_type = get_result("Would you like to search by name (1) or by code (2)? ", [1, 2])
+    if entry_type == 1:
+        del_item = input("What istthe name of the item? ")
+        del_item = "%"+del_item+"%"
+        cur.execute("SELECT * FROM current_trans WHERE pname LIKE ? COLLATE NOCASE", (del_item,))
+    elif entry_type == 2:
+        del_item = check_numeric("What is the item code? ", False, "int")
+        del_item = str(del_item)
+        del_item = "%"+del_item+"%"
+        cur.execute("SELECT * FROM current_trans WHERE icode LIKE ?", (del_item,))
+    rows = cur.fetchall()
+    if not isinstance(rows,list):
+        del_item = re.sub("%","",del_item)
+        return "No results found for %s." % del_item
+    len_rows = len(rows)
+    coupon_entries = []
+    if len_rows == 1:
+        chosen_row = rows[0]
+    else:
+        seq = 1
+        for i in rows:
+            print("Number %s: %s" % (seq, i))
+            if i[2] != i[11]:
+                coupon_entries.append(i)
+            seq = seq + 1
+        len_rows = len_rows + 1
+        avail_rows = [*range(1, len_rows, 1)]
+        selected_row = get_result("Which item would you like to remove? ", avail_rows)
+        selected_row = selected_row - 1
+        chosen_row = rows[selected_row]
+    chosen_row_id = chosen_row[0]
+    cur.execute("DELETE FROM current_trans WHERE id = ?", (chosen_row_id,))
+    print("Deleted entry: {}".format(chosen_row))
+    if len(coupon_entries) > 0:
+        print("Deleting all coupons related to this item.")
+        for i in coupon_entries:
+            coupon_entry_id = i[0]
+            cur.execute("DELETE FROM current_trans WHERE id = ?", (coupon_entry_id,))
+    conn.commit()
+    conn.close()
+    return "Successfully deleted entry."
+
+def void_last():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    cur.execute("SELECT pname FROM current_trans WHERE id = (SELECT MAX(id) FROM current_trans)")
+    pname = cur.fetchone()
+    pname = pname[0]
+    cur.execute("DELETE FROM current_trans WHERE id = (SELECT MAX(id) FROM current_trans)")
+    conn.commit()
+    conn.close()
+    return "Deleted last {} from the transaction".format(pname)
