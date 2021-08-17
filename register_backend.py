@@ -21,12 +21,12 @@ def check_age(req_age, birthdate):
 def search_product(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    dept = get_result("What kind of item is this: All (1), Produce (2), Meat (3), Deli (4),\nFrozen (5), Grocery (6), Miscellaneous (7)? ", [1, 2, 3, 4, 5, 6, 7])
+    dept = get_result("What kind of item is this: All (1), Produce (2), Meat (3), Deli (4),\nDairy (5), Frozen (6), Grocery (7), Miscellaneous (8)? ", [1, 2, 3, 4, 5, 6, 7, 8])
     if dept == "wrong":
         print("Searching in all departments.")
         dept = 1
     if dept == 1:
-        dept = 7
+        dept = 8
     else:
         dept = dept - 1
     search_type = get_result("Will you be searching by name (1) or by code (2)? ", [1, 2])
@@ -47,7 +47,7 @@ def search_product(cashier):
     if not isinstance(rows,list):
         search = re.sub("%","",search)
         return "No results for %s." % search
-    if not dept == 7:
+    if dept != 8:
         for i in rows:
             if i[14] == dept:
                 inter_rows.append(i)    # Only uses entries in the specified department.
@@ -143,8 +143,15 @@ def process_item(item_data, cashier):
     else:
         points = 0
     cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
-    (pname, item_code, user_weight, price, final_price, product_tax, ebt_price, points, final_price_delta, 0, item_code))
+    (pname, item_code, user_weight, price, final_price, product_tax, 0, points, final_price_delta, 0, item_code))
     conn.commit()
+    if ebt:
+        cur.execute("SELECT MAX(id) FROM current_trans")
+        ebt_id = cur.fetchone()
+        ebt_id = ebt_id[0]
+        cur.execute("INSERT INTO current_trans_ebt VALUES (?,?,?,?,?,?,?)",
+        (ebt_id, pname, item_code, user_weight, ebt_price, final_price, product_tax))
+        conn.commit()
     conn.close()
     return "Added %s" % pname
 
@@ -348,7 +355,7 @@ def locate_by_code(cashier):
         if result and i == 0:
             finality = process_item(result,cashier)     # Maybe not the most elegant way of doing it,
             break                                       # but it beats a bunch of nested if statements.
-        if result and i == 1:
+        if result and i == 1:                           # I think.
             finality = process_coupon(result,cashier)
             break
         if result and i == 2:

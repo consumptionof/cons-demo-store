@@ -167,6 +167,13 @@ The store data table currently stores the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.016
+- The store program now includes a dairy department.
+- The program now has two separate tables for transactions --  
+  current_trans, and current_trans_ebt. current_trans tracks
+  all items in the transaction, while current_trans_ebt only
+  tracks those eligible for food stamps.
+
 ### Version 0.015
 - Deprecated view_mech  
   I realized that I can easily gain the same results from

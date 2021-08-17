@@ -151,7 +151,7 @@ def insert_product():
     disc_price = check_numeric("What should the rewards card price be? Default is same as regular price: ", True, "float")
     if not disc_price or disc_price == "not_numeric":
         disc_price = price
-    department = get_result("What kind of item is this: Produce (1), Meat (2), Deli (3), Frozen (4), Grocery (5), Miscellaneous (6)? ", [1, 2, 3, 4, 5, 6])
+    department = get_result("What kind of item is this: Produce (1), Meat (2), Deli (3), Dairy (4), Frozen (5), Grocery (6), Miscellaneous (7)? ", [1, 2, 3, 4, 5, 6, 7])
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO stock VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -612,7 +612,7 @@ def update_stock():
     elif var_to_use == 14:
         cur.execute("SELECT department FROM stock WHERE id = ?", (row_id,))
         old_val = cur.fetchone()
-        new_val = get_result("What kind of item is this: Produce (1), Meat (2), Deli (3), Frozen (4), Grocery (5), Miscellaneous (6)? ", [1, 2, 3, 4, 5, 6])
+        new_val = get_result("What kind of item is this: Produce (1), Meat (2), Deli (3), Dairy (4), Frozen (5), Grocery (6), Miscellaneous (7)? ", [1, 2, 3, 4, 5, 6, 7])
         if new_val == "wrong":
             return "Invalid department."
         cur.execute("UPDATE stock SET department = ? WHERE id = ?", (new_val, row_id))
