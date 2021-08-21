@@ -229,7 +229,7 @@ def login():
         if check:
             check = check[0] # Still have to extract that thing.
             if passcode == check:
-                cur.execute("SELECT fname, lname, actype FROM employees WHERE login = ?", (uname,))
+                cur.execute("SELECT fname, lname, actype, login FROM employees WHERE login = ?", (uname,))
                 info = cur.fetchall()
                 info = info[0]
                 return info

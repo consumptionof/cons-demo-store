@@ -1,6 +1,7 @@
 import sqlite3
 import re
 import getpass
+import math
 from dateutil.relativedelta import relativedelta
 import dateutil.parser as parser
 from datetime import datetime
@@ -134,24 +135,13 @@ def process_item(item_data, cashier):
         product_tax = round(product_tax,2)
     else:
         product_tax = 0
-    if ebt:
-        ebt_price = final_price
-    else:
-        ebt_price = 0
     if re_points:
         points = final_price
     else:
         points = 0
     cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
-    (pname, item_code, user_weight, price, final_price, product_tax, 0, points, final_price_delta, 0, item_code))
+    (pname, item_code, user_weight, price, final_price, product_tax, ebt, points, final_price_delta, 0, item_code))
     conn.commit()
-    if ebt:
-        cur.execute("SELECT MAX(id) FROM current_trans")
-        ebt_id = cur.fetchone()
-        ebt_id = ebt_id[0]
-        cur.execute("INSERT INTO current_trans_ebt VALUES (?,?,?,?,?,?,?)",
-        (ebt_id, pname, item_code, user_weight, ebt_price, final_price, product_tax))
-        conn.commit()
     conn.close()
     return "Added %s" % pname
 
@@ -336,7 +326,7 @@ def search_card_by_phone(cashier):
             seq = seq + 1
         len_rows = len_rows + 1
         avail_rows = [*range(1, len_rows, 1)]
-        selected_row = get_result("Which account would you like to add? ", avail_rows)
+        selected_row = get_result("Which account would you like to use? ", avail_rows)
         selected_row = selected_row - 1
         chosen_row = rows[selected_row]
     final_data = process_card(chosen_row, cashier)
@@ -413,10 +403,191 @@ def void():
 def void_last():
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    cur.execute("SELECT pname FROM current_trans WHERE id = (SELECT MAX(id) FROM current_trans)")
+    cur.execute("SELECT MAX(id) FROM current_trans")
+    max_id = cur.fetchone()
+    max_id = max_id[0]
+    cur.execute("SELECT pname FROM current_trans WHERE id = ?", (max_id,))
     pname = cur.fetchone()
     pname = pname[0]
-    cur.execute("DELETE FROM current_trans WHERE id = (SELECT MAX(id) FROM current_trans)")
+    cur.execute("DELETE FROM current_trans WHERE id = ?", (max_id,))
     conn.commit()
     conn.close()
     return "Deleted last {} from the transaction".format(pname)
+
+def view_transaction(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM current_trans")
+    transaction = cur.fetchall()
+    total_price = 0
+    sales_tax = 0
+    ebt_price = 0
+    ebt_tax = 0
+    non_ebt_price = 0
+    non_ebt_tax = 0
+    re_points = 0
+    for i in transaction:
+        print(i)
+        total_price += i[5]    
+        sales_tax += i[6]
+        if i[7] == 1:
+            ebt_price += i[5]
+            ebt_tax+= i[6]
+        else:
+            non_ebt_price += i[5]
+            non_ebt_tax += i[6]
+        re_points += i[8]
+    ebt_price += ebt_tax
+    non_ebt_price += non_ebt_tax
+    ebt_price = round(ebt_price, 2)             # Everything needs to be rounded,
+    non_ebt_price = round(non_ebt_price, 2)     # or else stupid things might happen.
+    total_price = ebt_price + non_ebt_price
+    total_price = round(total_price, 2)
+    cur.execute("SELECT paid, paid_ebt FROM current_trans_meta WHERE cashier = ?", (cashier,))
+    paid_both = cur.fetchall()
+    paid_both = paid_both[0]
+    paid = paid_both[0]
+    paid_ebt = paid_both[1]
+    re_points = round(re_points, 0)
+    re_points = int(re_points)
+    print("""Total due: {}
+    Sales tax owed: {}
+    Non-EBT balance due: {}
+    EBT balance due: {}
+    Rewards points gained for this transaction: {}
+    Paid so far: {}
+    EBT paid so far: {}""".format(
+        total_price, sales_tax, non_ebt_price, ebt_price, re_points, paid, paid_ebt
+    ))
+    return [total_price, sales_tax, non_ebt_price, ebt_price, re_points, paid, paid_ebt]
+
+def payment(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    totals = view_transaction(cashier)
+    total_price = totals[0]
+    sales_tax = totals[1]
+    non_ebt_price = totals[2]
+    ebt_price = totals[3]
+    re_points = totals[4]
+    paid = totals[5]
+    paid_ebt = totals[6]
+    non_ebt_total = non_ebt_price - paid
+    ebt_total = ebt_price - paid_ebt
+    final_price = non_ebt_total + ebt_total
+    final_price = round(final_price,2)
+    while final_price > 0:
+        print("Remaining total is {}".format(final_price))
+        choice = get_result("Will the customer be paying with credit/debit (1), cash (2), or EBT (3)? Or would you like to cancel (4)? ", [1, 2, 3, 4])
+        if choice == 1:
+            paying = check_numeric("How much is being paid for with card? (Default is all) ", True, "float")
+            if not paying or paying == "not_numeric":
+                paying = final_price
+            paying = round(paying, 2)
+            if paying > non_ebt_total:
+                overflow = paying - non_ebt_total
+                paying = non_ebt_total
+            else:
+                overflow = 0
+            paying_ebt = 0
+            paying_ebt += overflow
+            if paying_ebt > ebt_total:
+                overflow = paying_ebt - ebt_total
+                paying_ebt = ebt_total
+            else:
+                overflow = 0
+            paying = round(paying, 2)
+            paying_ebt = round(paying_ebt, 2)
+            overflow = round(overflow, 2)
+            cur.execute("UPDATE current_trans_meta SET paid = paid + ? WHERE cashier = ?", (paying, cashier))
+            if paying_ebt:
+                cur.execute("UPDATE current_trans_meta SET paid_ebt = paid_ebt + ? WHERE cashier = ?", (paying_ebt, cashier))
+            if overflow:
+                cur.execute("UPDATE current_trans_meta SET overflow = ? WHERE cashier = ?", (overflow, cashier))
+            conn.commit()
+            non_ebt_total -= paying
+            ebt_total -= paid_ebt
+        elif choice == 2:
+            dollars = [1, 5, 10, 20, 50, 100]
+            nearest_dollar = math.ceil(total_price)     # This rounds up the total to the nearest whole dollar.
+            if nearest_dollar in dollars:               # Is this number in the dollars list? If it is, then we 
+                possible_dollars = []                   # don't want to put that particular variable first.
+            else:                                       # No? Then we will put it there.
+                possible_dollars = [nearest_dollar]
+            for i in dollars:                           # Only includes amounts that are higher than the total.
+                if i > total_price:
+                    possible_dollars.append(i)
+            if possible_dollars[0] > 20:                # This part findss the minimum number of $20 bills that
+                twenties = 40                           # will cover the cost. They're the most common 
+                while twenties < total_price:           # denomination I work with besides $1s, so I felt this
+                    twenties += 20                      # feature would be useful.
+                if twenties != 100:                     # This part prevents it from creating a duplicate
+                    possible_dollars.insert(1, twenties)# $100 entry.
+            len_of_possibs = len(possible_dollars)
+            len_of_possibs += 3
+            number_of_possibs = 1
+            print("Which of the following dollar amounts are being used:")
+            print("Number 1: Exact Change")             # There's always the possibility they'll give you exact change.
+            for j in possible_dollars:                  # I didn't feel like finding out if I could reuse i.
+                number_of_possibs += 1
+                print("Number {}: {}".format(number_of_possibs,j))
+            number_of_possibs += 1
+            print("Number {}: Custom".format(number_of_possibs))    # They also might give you a totally random amount.
+            result_possibs = range(1, len_of_possibs, 1)
+            select_amount = get_result("Enter your choice: ", result_possibs)
+            if select_amount == 1:
+                paying = total_price
+            elif select_amount == number_of_possibs:
+                paying = check_numeric("How much is the customer paying with? ", False, "float")
+                if paying == "not_numeric":
+                    return "Error: Please enter a number."
+                paying = round(paying,2)
+            else:
+                paying = possible_dollars[select_amount-2]
+            paying = round(paying, 2)
+            if paying > non_ebt_total:
+                overflow = paying - non_ebt_total
+                paying = non_ebt_total
+            else:
+                overflow = 0
+            paying_ebt = 0
+            paying_ebt += overflow
+            if paying_ebt > ebt_total:
+                overflow = paying_ebt - ebt_total
+                paying_ebt = ebt_total
+            else:
+                overflow = 0
+            paying = round(paying, 2)
+            paying_ebt = round(paying_ebt, 2)
+            overflow = round(overflow, 2)
+            cur.execute("UPDATE current_trans_meta SET paid = paid + ? WHERE cashier = ?", (paying, cashier))
+            if paying_ebt:
+                cur.execute("UPDATE current_trans_meta SET paid_ebt = paid_ebt + ? WHERE cashier = ?", (paying_ebt, cashier))
+            if overflow:
+                cur.execute("UPDATE current_trans_meta SET overflow = ? WHERE cashier = ?", (overflow, cashier))
+            conn.commit()
+            non_ebt_total -= paying
+            ebt_total -= paid_ebt
+        elif choice == 3:
+            paying = check_numeric("How much is being paid for with EBT? (Default is all) ", True, "float")
+            if not paying or paying == "not_numeric":
+                paying = ebt_price
+            paying = round(paying,2)
+            cur.execute("UPDATE current_trans_meta SET paid_ebt = ?", (paying,))
+            conn.commit()
+        else:
+            return "Exiting."
+        cur.execute("SELECT paid, paid_ebt FROM current_trans_meta WHERE cashier = ?", (cashier,))
+        paid_data = cur.fetchall()
+        paid_data = paid_data[0]
+        paid = paid_data[0]
+        paid_ebt = paid_data[1]
+        non_ebt_total = non_ebt_price - paid
+        ebt_total = ebt_price - paid_ebt
+        final_price = non_ebt_total + ebt_total
+        final_price = round(final_price,2)
+    cur.execute("SELECT overflow FROM current_trans_meta WHERE cashier = ?", (cashier,))
+    change = cur.fetchone()
+    change = change[0]
+    change = round(change,2)
+    return "The transaction is over! Change due is {}".format(change)

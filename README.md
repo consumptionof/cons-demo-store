@@ -167,6 +167,27 @@ The store data table currently stores the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.017
+- After some consideration, I've removed the current_trans_ebt
+  table from the database. The use of a for loop and a 0/1 integer
+  in the current_trans table serves essentially the same purpose.  
+- login now returns the user's login code in addition to the
+  other variables. This is because many functions in 
+  the register backend require the cashier's login code,
+  but it isn't defined anywhere else.  
+- Added view_transaction and payment  
+  These functions show the transaction and process payment.
+  Debit/credit cards, cash, and EBT are accepted.
+  Checks would function essentially the same way as a card,
+  so that wasn't included.
+  Using an EBT card only pays for eligible items, so beer is
+  not covered by this payment method.  
+- Added register_frontend.py  
+  This is a rudimentary program that lets the user interact
+  with the current transaction. All the register_backend.py
+  functions are available -- the ones that make sense to be
+  included, that is.
+
 ### Version 0.016
 - The store program now includes a dairy department.
 - The program now has two separate tables for transactions --  
