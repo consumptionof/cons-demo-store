@@ -138,12 +138,13 @@ def insert_product():
         print("The cashier will be asked to weigh this item.")
         spec_quant = 1
     else:
-        spec_quant = get_true("Do you want the cashier to specify a quantity of this item? (Default is no)", 0)
+        spec_quant = get_true("Do you want the cashier to specify a quantity of this item? (Default is no) ", 0)
     price = check_numeric("How much will this item cost, by each or by weight? ", False, "float")
     if check_numeric == "not_numeric":
         return "Invalid price entry."
+    price = round(price, 2)
     tax = get_true("Is this item subject to sales tax? (Default is no) ", 0)
-    ebt = get_true("Is this item available to puchase with food stamps? (Default is no) ", 0)
+    ebt = get_true("Is this item available to puchase with food stamps? (Default is yes) ", 1)
     re_points = get_true("Does purchasing this item count towards rewards points? (Default is yes) ", 1)
     age = check_numeric("What is the minimum age to purchase this item? Default is 0: ", True, "int")
     if not age or age == "not_numeric" :
@@ -180,7 +181,9 @@ def insert_employee():
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     fname = input("What is the employee's first name? ")
+    fname = sanitize(fname)
     lname = input("What is the employee's last name? ")
+    lname = sanitize(lname)
     cur.execute("SELECT * FROM employees WHERE fname LIKE ? AND lname LIKE ? COLLATE NOCASE", (fname, lname))
     same = cur.fetchall()
     if same:
@@ -203,6 +206,20 @@ def insert_employee():
     if passcode == "not_numeric": # pass is already a Python thing, so I'm using this instead.
         passcode = login
     cur.execute("INSERT INTO employees VALUES (NULL,?,?,?,?,?)", (fname, lname, actype, login, passcode))
+    cur.execute("""CREATE TABLE IF NOT EXISTS current_trans_{}(
+    id INTEGER PRIMARY KEY,
+    pname TEXT,
+    icode INTEGER,
+    user_weight REAL,
+    price REAL,
+    final_price REAL,
+    product_tax REAL,
+    ebt_paid INTEGER,
+    rewards_points REAL,
+    price_delta REAL,
+    req_points INTEGER,
+    coupon_code INTEGER
+    )""".format(login))
     conn.commit()
     conn.close()
     return """Inserted employee:
@@ -701,9 +718,27 @@ def update_employee():
     else:
         return "Please choose an entry to change."
     old_val = old_val[0]
+    if isinstance(new_val, str):
+        new_val = sanitize(new_val)
     print("Old value: {}\nNew value: {}".format(old_val,new_val))
     decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
     if decision == 1:
+        if var_to_use == 4:     # Please do not change the cashier's ID in the middle of a transaction. The data will be lost.
+            cur.execute("DROP TABLE current_trans_{}".format(old_val))
+            cur.execute("""CREATE TABLE IF NOT EXISTS current_trans_{}(
+            id INTEGER PRIMARY KEY,
+            pname TEXT,
+            icode INTEGER,
+            user_weight REAL,
+            price REAL,
+            final_price REAL,
+            product_tax REAL,
+            paid_ebt INTEGER,
+            rewards_points REAL,
+            price_delta REAL,
+            req_points INTEGER,
+            coupon_code INTEGER
+            )""".format(new_val))
         conn.commit()
         finality = "Change saved."
     else:

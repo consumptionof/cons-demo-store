@@ -2,23 +2,10 @@ from core_backend import get_result
 from register_backend import *
 
 active = 1
-account = login()
+account = log_in()
 fname = account[0]
 lname = account[1]
 uname = account[3]
-"""
-options_dict = {
-    1: view_transaction(uname),
-    2: locate_by_code(uname),
-    3: search_product(uname),
-    4: search_coupon(uname),
-    5: search_card_by_phone(uname),
-    6: void_last(uname),
-    7: void(uname),
-    8: payment(uname),
-    9: unlock(uname)
-}
-"""
 print("Welcome, %s %s." % (fname, lname))
 while active == 1:
     print("""Options: View transaction (1), locate by code (2),

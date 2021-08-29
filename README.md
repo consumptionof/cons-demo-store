@@ -167,6 +167,23 @@ The store data table currently stores the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.018
+- Populated the stock table with more products.  
+- core_backend.py functions that relied on looping only
+  a few times now loop forever. They were configured originally
+  in case there was a problem and they'd leave the user stuck forever
+  due to an error in the scripts. I feel they've been tested
+  sufficiently that this is no longer necessary.  
+- The database now houses a current_transaction_xxx assigned
+  to the register user's account.
+- inventory_frontend.py no longer asks if you want to do something
+  else. It instead simply takes the user back to the menu
+  they were using, with the option to go back to the main menu.
+- Changed the name of the login function to log_in to avoid
+  conflicts with some variable names.
+- void and void_last now take a cashier ID argument,
+  as it needs to reference the correct table.
+
 ### Version 0.017
 - After some consideration, I've removed the current_trans_ebt
   table from the database. The use of a for loop and a 0/1 integer

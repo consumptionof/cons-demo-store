@@ -139,8 +139,8 @@ def process_item(item_data, cashier):
         points = final_price
     else:
         points = 0
-    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
-    (pname, item_code, user_weight, price, final_price, product_tax, ebt, points, final_price_delta, 0, item_code))
+    cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
+    cashier, pname, item_code, user_weight, price, final_price, product_tax, ebt, points, final_price_delta, 0, item_code))
     conn.commit()
     conn.close()
     return "Added %s" % pname
@@ -202,7 +202,7 @@ def process_coupon(coupon_data, cashier):
     disc_card = coupon_data[9]
     expire = coupon_data[10]
     point_cost = coupon_data[11]
-    cur.execute("SELECT * FROM current_trans WHERE icode = ?", (affected_code,))
+    cur.execute("SELECT * FROM current_trans_{} WHERE icode = {}".format(cashier, affected_code,))
     matches = cur.fetchall()
     if not matches:
         return "Coupon must match previous sale."
@@ -265,12 +265,12 @@ def process_coupon(coupon_data, cashier):
         coupon_rewards = price_delta
     else:
         coupon_rewards = 0
-    cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)",
-    (coupon_name, affected_code, total_apps, coupon_discount, price_delta,
+    cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
+    cashier, coupon_name, affected_code, total_apps, coupon_discount, price_delta,
     tax_discount, total_ebt, coupon_rewards, price_delta, point_cost, coupon_code))
     if doubled:
-        cur.execute("INSERT INTO current_trans VALUES (NULL,?,?,?,?,?,?,?,?,?,?)",
-        ("Doubled coupon", affected_code, total_apps, coupon_discount, price_delta,
+        cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
+        "Doubled coupon", affected_code, total_apps, coupon_discount, price_delta,
         tax_discount, total_ebt, total_rewards, price_delta, point_cost, coupon_code))
     conn.commit()
     conn.close()
@@ -302,7 +302,7 @@ def process_card(customer, cashier):
             total_points = total_points + prov_points
         if total_points > cust_points:
             print("Insufficient points for coupons. Removing points coupons.")
-            cur.execute("DELETE FROM current_trans WHERE req_points > 0")
+            cur.execute("DELETE FROM current_trans_{} WHERE req_points > 0".format(cashier))
     cur.execute("UPDATE current_trans_meta SET disc_card = ? WHERE cashier = ?", (phone, cashier))
     conn.commit()
     conn.close()
@@ -355,19 +355,19 @@ def locate_by_code(cashier):
         finality = "Item not found."
     return finality
 
-def void():
+def void(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
     entry_type = get_result("Would you like to search by name (1) or by code (2)? ", [1, 2])
     if entry_type == 1:
         del_item = input("What istthe name of the item? ")
         del_item = "%"+del_item+"%"
-        cur.execute("SELECT * FROM current_trans WHERE pname LIKE ? COLLATE NOCASE", (del_item,))
+        cur.execute("SELECT * FROM current_trans_{} WHERE pname LIKE {} COLLATE NOCASE".format(cashier, del_item))
     elif entry_type == 2:
         del_item = check_numeric("What is the item code? ", False, "int")
         del_item = str(del_item)
         del_item = "%"+del_item+"%"
-        cur.execute("SELECT * FROM current_trans WHERE icode LIKE ?", (del_item,))
+        cur.execute("SELECT * FROM current_trans_{} WHERE icode LIKE {}".format(cashier, del_item,))
     rows = cur.fetchall()
     if not isinstance(rows,list):
         del_item = re.sub("%","",del_item)
@@ -389,27 +389,27 @@ def void():
         selected_row = selected_row - 1
         chosen_row = rows[selected_row]
     chosen_row_id = chosen_row[0]
-    cur.execute("DELETE FROM current_trans WHERE id = ?", (chosen_row_id,))
+    cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, chosen_row_id,))
     print("Deleted entry: {}".format(chosen_row))
     if len(coupon_entries) > 0:
         print("Deleting all coupons related to this item.")
         for i in coupon_entries:
             coupon_entry_id = i[0]
-            cur.execute("DELETE FROM current_trans WHERE id = ?", (coupon_entry_id,))
+            cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, coupon_entry_id,))
     conn.commit()
     conn.close()
     return "Successfully deleted entry."
 
-def void_last():
+def void_last(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    cur.execute("SELECT MAX(id) FROM current_trans")
+    cur.execute("SELECT MAX(id) FROM current_trans_{}".format(cashier,))
     max_id = cur.fetchone()
     max_id = max_id[0]
-    cur.execute("SELECT pname FROM current_trans WHERE id = ?", (max_id,))
+    cur.execute("SELECT pname FROM current_trans_{} WHERE id = {}".format(cashier, max_id,))
     pname = cur.fetchone()
     pname = pname[0]
-    cur.execute("DELETE FROM current_trans WHERE id = ?", (max_id,))
+    cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, max_id,))
     conn.commit()
     conn.close()
     return "Deleted last {} from the transaction".format(pname)
@@ -417,7 +417,7 @@ def void_last():
 def view_transaction(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    cur.execute("SELECT * FROM current_trans")
+    cur.execute("SELECT * FROM current_trans_{}".format(cashier))
     transaction = cur.fetchall()
     total_price = 0
     sales_tax = 0
