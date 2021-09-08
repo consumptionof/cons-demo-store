@@ -1,5 +1,5 @@
 from sqlite3.dbapi2 import SQLITE_DROP_VIEW
-from core_backend import stop_dupe
+from core_backend import sanitize, stop_dupe
 from inventory_backend import check_numeric
 import sqlite3
 
@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS store_data(
 )
 """)
 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS current_trans_meta(
+    cashier INTEGER,
+    cashier_fname TEXT,
+    disc_card INTEGER,
+    cust_age TEXT,
+    paid REAL,
+    paid_ebt REAL,
+    overflow REAL
+)
+""")
+
 store_name = input("What is the name of the store? ")
 sales_tax = "not_numeric"
 while isinstance(sales_tax, str):
@@ -80,7 +92,9 @@ cur.execute("INSERT INTO store_data VALUES (NULL,?,?)", (store_name, sales_tax))
 is_login_numeric = 0
 is_passcode_numeric = 0
 fname = input("What is the initial manager's name? ")
+fname = sanitize(fname)
 lname = input("What is the manager's last name? ")
+lname = sanitize(lname)
 while is_login_numeric == 0:
     login = check_numeric("What is the manager's login code? ", False, "int")
     if login == "not_numeric":
@@ -94,6 +108,33 @@ while is_passcode_numeric == 0:
     else:
         is_passcode_numeric = 1
 cur.execute("INSERT INTO employees VALUES (NULL,?,?,2,?,?)", (fname, lname, login, passcode))
+
+cur.execute("""CREATE TABLE IF NOT EXISTS current_trans_{}(
+    id INTEGER PRIMARY KEY,
+    pname TEXT,
+    icode INTEGER,
+    user_weight REAL,
+    price REAL,
+    final_price REAL,
+    product_tax REAL,
+    ebt_paid INTEGER,
+    rewards_points REAL,
+    price_delta REAL,
+    req_points INTEGER,
+    coupon_code INTEGER
+)""".format(login))
+
+cur.execute("""CREATE TABLE IF NOT EXISTS interim_trans_{}(
+    name TEXT,
+    icode INTEGER,
+    ccode INTEGER,
+    quantity REAL,
+    price REAL,
+    final_price REAL,
+    dept INTEGER
+)""".format(login))
+
+cur.execute("INSERT INTO current_trans_meta VALUES (?,?,0,0,0,0,0)", (login, fname))
 
 conn.commit()
 conn.close()

@@ -22,6 +22,7 @@ database template with all the requisite information.
 - Adding and updating the rewards card member to a meta table.
 - Verifying the age of someone requesting to buy age-restricted  
   products, and storing that information in the meta table.
+- Processing a transaction and generating a receipt.
 
 
 The products table, part of the store database,
@@ -112,6 +113,15 @@ The current transaction table currently stores the following:
 - The code of the coupon, if it's a coupon.
   The item code, if it's a product.
 
+The interim transaction table currently stores the following:
+- The name of the item.
+- The item code.
+- The coupon code. (This is the same as the item code if it isn't a coupon.)
+- The item quantity.
+- The item's price.
+- The final price, the quantity times the price.
+- The item's department.
+
 (Important note: The current transaction table is in a state of flux. 
 Elements are being added and tweaked at this point in development,
 so the creation of such a table will only be hard-coded once
@@ -122,6 +132,8 @@ The current transaction meta table currently stores the following:
 - The cashier's first name.
 - The customer's phone number.
 - The customer's birthdate.
+- The current amount paid with non-EBT sources.
+- The current amount paid with EBT.
 
 The store data table currently stores the following:
 - The store's ID number.
@@ -166,6 +178,34 @@ The store data table currently stores the following:
   So, as long as this is a CLI program, they will stay.
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
+
+### Version 0.019
+- Added finish_transaction  
+  This function generates a receipt, clears the current_trans
+  table, and credits the customer with the rewards points they earned.  
+- The program now requires the os module.  
+- Added interim_trans  
+  This table temporarily holds data for finish_transaction.
+  This data is used to create the receipt.  
+- initial.py now creates a current_trans and interim_trans table
+  for the account created with it. It also creates an entry
+  in current_trans_meta.
+- insert_employee now creates a current_trans table and interim_trans table
+  for the new account, as well as an entry in current_trans_meta.  
+- upate_employee now deletes the old current_trans table and interim_trans table
+  used in the old login number, and creates new ones.  
+  IMPORTANT: This will NOT preserve the data in these tables. They will be lost.
+  Don't do this while there's an important transaction going on.
+- Reverted the way core_backend.py functions loop  
+  I decided last time the odds of getting trapped in an inescapable
+  loop were minimal, but I remembered that there isn't currently a way
+  to cancel out of something you're trying to do. So, the functions
+  now repeat three times as before.  
+- Added sanitize
+  The program now refers to current_trans and interim_trans tables
+  using login codes, and this can be unsafe at times. However, I've yet to
+  find a better way to store data for each cashier. This program
+  was created to eliminate potentially problematic strings.
 
 ### Version 0.018
 - Populated the stock table with more products.  

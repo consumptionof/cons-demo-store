@@ -2,46 +2,43 @@ import sqlite3
 import re
 import getpass
 
+chances = [*range(0, 3)]
+
 def get_true(request, default):
-    iter = 0
     result = 2 # Please tell the user the default value.
-    while iter == 0:
+    for i in chances:
         digit = input(request).lower()
         if digit:
             if digit == "no" or digit == "n" or digit == "0":
                 result = 0
-                iter = 1
+                break
             elif digit == "yes" or digit == "ye" or digit == "y" or digit == "1":
                 result = 1
-                iter = 1
+                break
             else:
                 print("Invalid input.")
-                #iter = iter + 1
         elif not digit:
             print("Using default...")
             result = default
-            iter = 1
+            break
         else:
             print("Invalid input.")
-            #iter = iter + 1
     if result == 2:
         print("Using default...")
         result = default
     return result
 
-def get_result(request, possibs):
-    iter = 0
-    result = "wrong"
-    while iter == 0:
+def get_result(request, possibs):   # possibs is a list or tuple.
+    result = "wrong"                # I don't know what will happen if you
+    for i in chances:               #put a dictionary there.
         digit = input(request)
         if digit.isnumeric():
             digit = int(digit)
         if digit in possibs:
             result = digit
-            iter = 1
+            break
         if result != digit:
             print("Invalid input.")
-            #iter = iter + 1
     return result
 
 def generate_code(ttype):
@@ -61,7 +58,7 @@ def generate_code(ttype):
         maxcode = 1
     else:
         maxcode = int(maxcode[0])       # This line extracts the entry and converts it to an int.
-        maxcode = maxcode + 1           # + 1 saves it from running that loop more than needed.
+        maxcode += 1                    # + 1 saves it from running that loop more than needed.
     while dupe == 1:
         cur.execute("SELECT code FROM coupons WHERE code = ?", (maxcode,))
         coupon_code = cur.fetchone()
@@ -70,7 +67,7 @@ def generate_code(ttype):
         cur.execute("SELECT code FROM stock WHERE code = ?", (maxcode,))
         stock_code = cur.fetchone()
         if coupon_code or card_code or stock_code:
-            maxcode = maxcode + 1
+            maxcode += 1
         else:
             if ttype == "coupons" and maxcode == 1:
                 maxcode = maxcode + 6000000000
@@ -113,12 +110,11 @@ def stop_dupe(request, table, column):
             conn.close()
         return result
 
-def check_phone():
-    iter = 0            # This function is necessary because it doesn't matter
+def check_phone():      # This function is necessary because it doesn't matter
     result = "exists"   # if a phone number conflicts with a code. They're completely separate.
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    while iter == 0: # Doesn't need an input to be specified; it only checks for one thing.
+    for i in chances: # Doesn't need an input to be specified; it only checks for one thing.
         pnumber = input("What is the customer's phone number? (Include the area code.) ")
         pnumber = re.sub("-","",pnumber)
         if pnumber.isnumeric():
@@ -126,30 +122,25 @@ def check_phone():
             phone_exists = cur.fetchall()
             if phone_exists:
                 print("This phone number is already in use:\n%s" % phone_exists)
-                #iter = iter + 1
             else:
                 result = pnumber
-                iter = 1
+                break
         else:
             print("Please enter a number, with no other characters.")
-            #iter = iter + 1
     conn.close()
     return result
 
 def check_codes(request):
-    iter = 0
-    result = "wr9ong" # This is a value that should never be a code.
+    result = "wr9ong"                  # This is a value that should never be a code.
     conn = sqlite3.connect("store.db") # If it is, something has gone terribly wrong.
     cur = conn.cursor()
-    while iter == 0:
+    for i in chances:
         digit = input(request)
         if digit == "":
             print("Please enter a code number.")
-            #iter = iter + 1
             result = "no_result"
         elif digit.isnumeric() == False:
             print("Codes must be numeric. Please enter a number.")
-            #iter = iter + 1
             result = "not_numeric"
         else:
             cur.execute("SELECT * FROM coupons WHERE code LIKE ?", (digit,))
@@ -162,31 +153,27 @@ def check_codes(request):
                 print("The entry appears to already exist in coupons:")
                 print(coupon_exists)
                 result = "exists"
-                #iter = iter + 1
             elif card_exists:
                 print("The entry appears to already exist in cards:")
                 print(card_exists)
                 result = "exists"
-                #iter = iter + 1
             elif stock_exists:
                 print("The entry appears to already exist in stock:")
                 print(stock_exists)
                 result = "exists"
-                #iter = iter + 1
             else:
                 result = digit
-                iter = 1
+                break
     conn.close()
     return result
 
 def check_numeric(request,cannull,numtyp):
-    iter = 0
     result = "not_numeric"
-    while iter == 0:
+    for i in chances:
         digit = input(request)
         if not digit and cannull == True:
             result = digit
-            iter = 1
+            break
         else:
             try:           
                 if numtyp == "float":
@@ -195,10 +182,9 @@ def check_numeric(request,cannull,numtyp):
                     digit = int(digit)
             except ValueError:
                 print("Please enter a number.")
-                #iter = iter + 1
             else:
                 result = digit
-                iter = 1
+                break
     if not result or (result == "not_numeric" and cannull == True):
         print("Using default value...")
     return result
@@ -235,7 +221,7 @@ def log_in():
                 return info
             else:
                 uname = ""      # You need to do this, otherwise it'll just go
-                passcode = ""   # "Incorrect password" forever.
+                passcode = ""   # "Incorrect password." forever.
                 print("Incorrect password.")
         else:
             uname = ""
@@ -264,6 +250,7 @@ def unlock(login):
 
 def sanitize(target):
     target = re.sub("drop table", "", target, flags = re.IGNORECASE)
+    target = re.sub("delete", "", target, flags = re.IGNORECASE)
     target = re.sub(";", "", target)
     target = re.sub("--", "", target)
     return target

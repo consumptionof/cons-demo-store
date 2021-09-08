@@ -94,7 +94,9 @@ def insert_coupon():
 
 def insert_customer():
     fname = input("What is the customer's first name? ").capitalize()
+    fname = sanitize(fname)
     lname = input("What is the customer's last name? ").capitalize()
+    lname = sanitize(lname)
     phone = check_phone()
     if phone == "exists":
         return "Invalid phone number."
@@ -119,6 +121,7 @@ def insert_customer():
 
 def insert_product():
     name = input("What is the product's name? ")
+    name = sanitize(name)
     code = check_codes("What is the product's code number or PLU? ")
     if code == "exists":
         return "The specified item code already exists. Please use another one."
@@ -220,6 +223,16 @@ def insert_employee():
     req_points INTEGER,
     coupon_code INTEGER
     )""".format(login))
+    cur.execute("""CREATE TABLE IF NOT EXISTS interim_trans_{}(
+    name TEXT,
+    icode INTEGER,
+    ccode INTEGER,
+    quantity REAL,
+    price REAL,
+    final_price REAL,
+    dept INTEGER
+    )""".format(login))
+    cur.execute("INSERT INTO current_trans_meta VALUES (?,?,0,0,0,0,0)", (login, fname))
     conn.commit()
     conn.close()
     return """Inserted employee:
@@ -385,6 +398,8 @@ def update_coupon():
         cur.execute("UPDATE coupons SET re_cost = ? WHERE id = ?", (new_val, row_id))
     else:
         return "Please choose an entry to change."
+    if isinstance(new_val, str):
+        new_val = sanitize(new_val)
     old_val = old_val[0]
     print("Old value: {}\nNew value: {}".format(old_val,new_val))
     decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
@@ -466,6 +481,8 @@ def update_customer():
     else:
         return "Please choose an entry to change."
     old_val = old_val[0]
+    if isinstance(new_val, str):
+        new_val = sanitize(new_val)
     print("Old value: {}\nNew value: {}".format(old_val,new_val))
     decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
     if decision == 1:
@@ -636,6 +653,8 @@ def update_stock():
     else:
         return "Please choose an entry to change."
     old_val = old_val[0]
+    if isinstance(new_val, str):
+        new_val = sanitize(new_val)
     print("Old value: {}\nNew value: {}".format(old_val,new_val))
     decision = get_true("Are you sure you want to make this change? (Default is yes) ", 1)
     if decision == 1:
@@ -725,6 +744,8 @@ def update_employee():
     if decision == 1:
         if var_to_use == 4:     # Please do not change the cashier's ID in the middle of a transaction. The data will be lost.
             cur.execute("DROP TABLE current_trans_{}".format(old_val))
+            cur.execute("DROP TABLE interim_trans_{}".format(old_val))
+            cur.execute("DELETE FROM current_trans_meta WHERE cashier = ?", (old_val,))
             cur.execute("""CREATE TABLE IF NOT EXISTS current_trans_{}(
             id INTEGER PRIMARY KEY,
             pname TEXT,
@@ -739,6 +760,20 @@ def update_employee():
             req_points INTEGER,
             coupon_code INTEGER
             )""".format(new_val))
+            cur.execute("""CREATE TABLE IF NOT EXISTS interim_trans_{}(
+            name TEXT,
+            icode INTEGER,
+            ccode INTEGER,
+            quantity REAL,
+            price REAL,
+            final_price REAL,
+            dept INTEGER
+            )""".format(new_val))
+            conn.commit()
+            cur.execute("SELECT fname FROM employees WHERE login = ?", (new_val,))
+            fname = cur.fetchone()
+            fname = fname[0]
+            cur.execute("INSERT INTO current_trans_meta VALUES (?, ?, 0, 0, 0, 0, 0)", (new_val, fname))
         conn.commit()
         finality = "Change saved."
     else:

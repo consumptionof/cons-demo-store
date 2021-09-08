@@ -1,11 +1,11 @@
 import sqlite3
 import re
-import getpass
 import math
 from dateutil.relativedelta import relativedelta
 import dateutil.parser as parser
 from datetime import datetime
 from core_backend import *
+import os
 
 def check_age(req_age, birthdate):
     dt = datetime.now()
@@ -38,6 +38,7 @@ def search_product(cashier):
         search = str(search)
     else:
         return "Invalid search."
+    search = sanitize(search)
     search = "%"+search+"%"
     if search_type == 1:
         cur.execute("SELECT * FROM stock WHERE name LIKE ? COLLATE NOCASE", (search,))
@@ -285,6 +286,7 @@ def process_card(customer, cashier):
     cust_code = customer[5]
     cur.execute("SELECT disc_card FROM current_trans_meta WHERE cashier = ?", (cashier,))
     old_phone = cur.fetchone()
+    old_phone = old_phone[0]
     if old_phone:
         cur.execute("SELECT points FROM cards WHERE code = ?", (cust_code,))
         cust_points = cur.fetchone()
@@ -360,7 +362,8 @@ def void(cashier):
     cur = conn.cursor()
     entry_type = get_result("Would you like to search by name (1) or by code (2)? ", [1, 2])
     if entry_type == 1:
-        del_item = input("What istthe name of the item? ")
+        del_item = input("What is the name of the item? ")
+        del_item = sanitize(del_item)
         del_item = "%"+del_item+"%"
         cur.execute("SELECT * FROM current_trans_{} WHERE pname LIKE {} COLLATE NOCASE".format(cashier, del_item))
     elif entry_type == 2:
@@ -466,10 +469,8 @@ def payment(cashier):
     cur = conn.cursor()
     totals = view_transaction(cashier)
     total_price = totals[0]
-    sales_tax = totals[1]
     non_ebt_price = totals[2]
     ebt_price = totals[3]
-    re_points = totals[4]
     paid = totals[5]
     paid_ebt = totals[6]
     non_ebt_total = non_ebt_price - paid
@@ -590,4 +591,127 @@ def payment(cashier):
     change = cur.fetchone()
     change = change[0]
     change = round(change,2)
-    return "The transaction is over! Change due is {}".format(change)
+    print("The transaction is over! Change due is {}".format(change))
+    return finish_transaction(cashier)
+
+def finish_transaction(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM current_trans_{}".format(cashier))
+    transaction = cur.fetchall()
+    if not transaction:
+        return "There is no transaction to finish."
+    dt = datetime.now()                         # Getting the current time to print on the receipt,
+    codedt = dt.strftime("%Y%m%d-%H%M%S-{}".format(cashier))    # and for the receipt's filename.
+    verbdt = dt.strftime("%A, %B %d, %Y")
+    cur.execute("SELECT cashier_fname FROM current_trans_meta WHERE cashier = ?", (cashier,))
+    cashier_name = cur.fetchone()
+    cashier_name = cashier_name[0]
+    your_cashier = "Your cashier was {}".format(cashier_name)
+    all_depts = [["DEEP BLUE", "", "-----"], ["", "- Produce"], ["", "- Meat"], ["", "- Deli"],
+    ["", "- Dairy"], ["", "- Frozen"], ["", "- Grocery"], ["", "- Miscellaneous"],[]]
+    total_sales_tax = 0     # all_depts will hold all the text data which will be printed
+    total_price = 0         # onto the receipt. Is doing it this way insane?
+    total_savings = 0       # Well, maybe. Possibly even probably.
+    total_points = 0.0
+    for i in transaction:   # The empty list entries will be made into blank lines.
+        name = i[1]
+        icode = i[2]
+        ccode = i[11]
+        quantity = round(i[3], 2)
+        price = round(i[4], 2)
+        final_price = round(i[5], 2)
+        sales_tax = round(i[6], 2)
+        points = round(i[8], 2)
+        total_price = total_price + final_price + sales_tax
+        if final_price < 0:
+            final_price = abs(final_price)
+            total_savings += final_price
+        total_sales_tax += sales_tax
+        total_points += points
+        cur.execute("SELECT department FROM stock WHERE code = ?", (icode,))
+        dept = cur.fetchone()   # The current_transaction table doesn't store the department,
+        dept = dept[0]          # since that's not really relevant to the transaction in progress.
+        cur.execute("SELECT ccode FROM interim_trans_{} WHERE ccode = {}".format(cashier, ccode))
+        test = cur.fetchone()   # I didn't know how to do what I had in mind with just the nested lists above,
+        if test:                # so I figured I'd just put the stuff in a separate table and process it like that.
+            cur.execute("UPDATE interim_trans_{} SET quantity = quantity + {}, final_price = final_price + {} WHERE ccode = {}".format(
+                cashier, quantity, final_price, ccode
+            ))
+        else:
+            cur.execute("INSERT INTO interim_trans_{} VALUES('{}',{},{},{},{},{},{})".format(
+                cashier, name, icode, ccode, quantity, price, final_price, dept))
+        conn.commit()
+    total_sales_tax_text = "Sales tax: ${}".format(total_sales_tax)
+    total_price_text = "Total price: ${}".format(total_price)
+    total_savings_text = "You saved ${}".format(total_savings)
+    cur.execute("SELECT disc_card FROM current_trans_meta WHERE cashier = ?", (cashier,))
+    rewards_card = cur.fetchone()
+    rewards_card = rewards_card[0]
+    if rewards_card:
+        total_points = round(total_points, 0)
+        total_points = int(total_points)
+        earned_points_text = "You earned {} points".format(total_points)
+        cur.execute("SELECT points FROM cards WHERE phone = ?", (rewards_card,))
+        current_points = cur.fetchone()
+        if current_points:
+            current_points = current_points[0]
+        else:
+            current_points = 0
+        current_points += total_points
+        current_points_text = "You now have {} total points".format(current_points)
+        if total_savings > 0:
+            all_depts[8].extend(["", total_sales_tax_text, total_price_text, total_savings_text, earned_points_text, current_points_text, verbdt, your_cashier])
+        else:
+            all_depts[8].extend(["", total_sales_tax_text, total_price_text, earned_points_text, current_points_text, verbdt, your_cashier])
+    elif total_savings > 0:
+        all_depts[8].extend(["", total_sales_tax_text, total_price_text, total_savings_text, verbdt, your_cashier])
+    else:
+        all_depts[8].extend(["", total_sales_tax_text, total_price_text, verbdt, your_cashier])
+    cur.execute("SELECT icode, ccode FROM interim_trans_{}".format(cashier))
+    ccodes = cur.fetchall() # Returns a list of tuple pairs, like [(4011, 4011)...]
+    for i in ccodes:
+        if i[0] == i[1]:    # Is this a coupon? If not, proceed.
+            ccode = i[1]
+            cur.execute("SELECT name, quantity, final_price, dept FROM interim_trans_{} WHERE ccode = {}".format(cashier, ccode))
+            things = cur.fetchall()
+            things = things[0]
+            interim_price = things[2]
+            department = things[3]
+            sentence = "{}: {} ${}".format(things[0], things[1], interim_price)
+            all_depts[department].append(sentence)
+            cur.execute("SELECT name, final_price FROM interim_trans_{} WHERE icode = {} AND icode != ccode".format(cashier, ccode))
+            coupon = cur.fetchall()
+            if coupon:
+                coupon = coupon[0]
+                coupon_savings = coupon[1]
+                sentence = "{}: ${}".format(coupon[0], coupon_savings)
+                all_depts[department].append(sentence)
+                total_savings = interim_price + coupon_savings
+                sentence = "Your price: ${}".format(total_savings)
+                all_depts[department].append(sentence)
+    save_dir = "receipts/"
+    filename = "receipt_{}.txt".format(codedt)
+    save_location = os.path.join(save_dir, filename)
+    file = open(save_location, "a")
+    for j in all_depts:
+        if len(j) > 2:
+            for k in j:
+                print(k)
+                if "cashier" in k:              # Just so there isn't a newline at the very end.
+                    file.write("{}".format(k))  # A bit hacky, but it works.
+                else:
+                    file.write("{}\n".format(k))
+    cur.execute("DELETE FROM current_trans_{}".format(cashier))
+    cur.execute("DELETE FROM interim_trans_{}".format(cashier))
+    cur.execute("""UPDATE current_trans_meta
+    SET disc_card = 0,
+    cust_age = 0,
+    paid = 0,
+    paid_ebt = 0,
+    overflow = 0
+    WHERE cashier = ?""", (cashier,))
+    if rewards_card:
+        cur.execute("UPDATE cards SET points = ? WHERE phone = ?", (current_points, rewards_card))
+    conn.commit()
+    return "Transaction finished. Have a nice day!"
