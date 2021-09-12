@@ -1,0 +1,22 @@
+DEEP BLUE
+
+-----
+
+- Produce
+Honeycrisp Apple: 2.0 $5.98
+Honeycrisp Apple: $1.0
+Your price: $4.98
+
+- Grocery
+Coffee Breakfast Blend: 1.0 $5.99
+Cinnamon Graham Crackers: 1.0 $2.99
+Cinnamon Graham DC: $1.0
+Your price: $1.9900000000000002
+
+Sales tax: $0.0
+Total price: $12.96
+You saved $2.0
+You earned 13 points
+You now have 176 total points
+Saturday, September 11, 2021
+Your cashier was Frank

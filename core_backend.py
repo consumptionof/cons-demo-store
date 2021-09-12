@@ -30,7 +30,7 @@ def get_true(request, default):
 
 def get_result(request, possibs):   # possibs is a list or tuple.
     result = "wrong"                # I don't know what will happen if you
-    for i in chances:               #put a dictionary there.
+    for i in chances:               # put a dictionary there.
         digit = input(request)
         if digit.isnumeric():
             digit = int(digit)
@@ -247,6 +247,30 @@ def unlock(login):
         else:
             print("Incorrect passcode.")
     return True 
+
+def manager_auth():
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    result = False
+    man_login = check_numeric("Enter manager's code: ", False, "int")
+    if man_login == "not_numeric":
+        return result
+    for i in chances:
+        man_passcode = getpass.getpass("Enter manager's passcode: ")
+        try:
+            man_passcode = int(man_passcode)
+            break
+        except ValueError:
+            man_passcode = ""
+            print("Please enter an integer.")
+    if not man_passcode:
+        return result
+    cur.execute("SELECT actype FROM employees WHERE login = ?", (man_login,))
+    login_type = cur.fetchone()
+    login_type = login_type[0]
+    if login_type == 2:
+        result = True
+    return result
 
 def sanitize(target):
     target = re.sub("drop table", "", target, flags = re.IGNORECASE)

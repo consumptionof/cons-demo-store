@@ -1,0 +1,19 @@
+DEEP BLUE
+
+-----
+
+- Produce
+Honeycrisp Apple: 2.0 $5.98
+Honeycrisp Apple: $1.0
+Your price: $4.98
+Granny Smith Apple: 2.0 $3.98
+Gr Smith Apple: $1.0
+Your price: $2.98
+
+Sales tax: $0.0
+Total price: $7.960000000000001
+You saved $2.0
+You earned 8 points
+You now have 163 total points
+Thursday, September 09, 2021
+Your cashier was Frank

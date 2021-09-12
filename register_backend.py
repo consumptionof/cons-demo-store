@@ -94,7 +94,7 @@ def process_item(item_data, cashier):
         age_req = check_age(age, cust_age)
         legal = age_req[0]
         cust_date = age_req[1]
-        if cust_age != cust_date:
+        if cust_age != cust_date and legal == "legal":
             cur.execute("UPDATE current_trans_meta SET cust_age = ? WHERE cashier = ?", (cust_date,cashier))
         if legal == "illegal":
             return "Not for sale"
@@ -106,7 +106,7 @@ def process_item(item_data, cashier):
         user_weight = check_numeric("How many/much of this item is being purchased? ", False, numtype)
         if not isinstance(user_weight, str): 
             if user_weight > available:
-                return "Cannot sell more  than {}.".format(available)
+                return "Cannot sell more than {}.".format(available)
             if user_weight > 20:
                 should_enter = get_true("This is a large quantity of items. Are you sure of this? (Default is no)", 0)
                 if should_enter == 0:
@@ -126,7 +126,7 @@ def process_item(item_data, cashier):
         is_disc = 0
         price_delta = 0
     final_price_delta = price_delta * user_weight
-    final_price = (price * user_weight) - final_price_delta
+    final_price = (price * user_weight)# - final_price_delta
     final_price = round(final_price,2)
     if tax:
         cur.execute("SELECT sales_tax FROM store_data WHERE store_id = 1")
@@ -141,7 +141,15 @@ def process_item(item_data, cashier):
     else:
         points = 0
     cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
-    cashier, pname, item_code, user_weight, price, final_price, product_tax, ebt, points, final_price_delta, 0, item_code))
+    cashier, pname, item_code, user_weight, price, final_price, product_tax, ebt, points, 0, 0, item_code))
+    if final_price_delta > 0 and is_disc > 0:
+        listed_delta = abs(final_price_delta)
+        price_delta = -price_delta
+        final_price_delta = -final_price_delta
+        disc_points = final_price_delta
+        cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
+        cashier, pname, item_code, user_weight, price_delta, final_price_delta, 0, ebt, disc_points, listed_delta, 0, 1))
+    cur.execute("UPDATE stock SET quan = quan - ? WHERE code = ?", (user_weight, item_code))
     conn.commit()
     conn.close()
     return "Added %s" % pname
@@ -207,6 +215,15 @@ def process_coupon(coupon_data, cashier):
     matches = cur.fetchall()
     if not matches:
         return "Coupon must match previous sale."
+    if max_apps > 0:
+        cur.execute("SELECT user_weight FROM current_trans_{} WHERE coupon_code = {}".format(cashier, coupon_code))
+        apps_in_trans = cur.fetchall()
+        if apps_in_trans:
+            number_of_apps = 0
+            for i in apps_in_trans:
+                number_of_apps += i[0]
+            if number_of_apps >= max_apps:
+                return "This coupon cannot be applied any further."
     dt = datetime.now()             # I only recently realized that the
     try:                            # search by code function doesn't check expirations.
         expire = int(expire)        # Is expire 0?
@@ -305,6 +322,32 @@ def process_card(customer, cashier):
         if total_points > cust_points:
             print("Insufficient points for coupons. Removing points coupons.")
             cur.execute("DELETE FROM current_trans_{} WHERE req_points > 0".format(cashier))
+    else:
+        pass
+        cur.execute("SELECT id, icode FROM current_trans_{}".format(cashier))
+        product_codes = cur.fetchall()
+        for i in product_codes:
+            entry = i[0]
+            icode = i[1]
+            cur.execute("SELECT price, disc_price FROM stock WHERE code = ?", (icode,))
+            price_disc = cur.fetchone()
+            normal_price = price_disc[0]
+            disc_price = price_disc[1]
+            if normal_price != disc_price:
+                cur.execute("SELECT pname, icode, user_weight, final_price, paid_ebt FROM current_trans_{} WHERE id = {}".format(cashier, entry) )
+                deets = cur.fetchone()
+                pname = deets[0]
+                item_code = deets[1]
+                weight = deets[2]
+                current_price = deets[3]
+                ebt = deets[4]
+                price_delta = disc_price - normal_price
+                price_weight = disc_price * weight
+                final_price_delta = price_weight - current_price
+                disc_points = final_price_delta
+                listed_delta = final_price_delta
+                cur.execute("INSERT INTO current_trans_{} VALUES (NULL,'{}',{},{},{},{},{},{},{},{},{},{})".format(
+                cashier, pname, item_code, weight, price_delta, final_price_delta, 0, ebt, disc_points, listed_delta, 0, 1))
     cur.execute("UPDATE current_trans_meta SET disc_card = ? WHERE cashier = ?", (phone, cashier))
     conn.commit()
     conn.close()
@@ -417,6 +460,26 @@ def void_last(cashier):
     conn.close()
     return "Deleted last {} from the transaction".format(pname)
 
+def void_transaction(cashier):
+    conn = sqlite3.connect("store.db")
+    cur = conn.cursor()
+    print("This action requires manager authorization.")
+    authorized = manager_auth()
+    if authorized:
+        cur.execute("SELECT icode, coupon_code, user_weight FROM current_trans_{}".format(cashier,))
+        items = cur.fetchall()
+        for i in items:
+            icode = i[0]
+            ccode = i[1]
+            quan = i[2]
+            if icode == ccode:  # Is this a coupon? If not, proceed.
+                cur.execute("UPDATE stock SET quan = quan + ? WHERE code = ?", (quan, icode))
+        cur.execute("DELETE FROM current_trans_{}".format(cashier))
+        conn.commit()
+        return "Transaction canceled."
+    else:
+        return "Cannot complete."
+
 def view_transaction(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
@@ -518,7 +581,7 @@ def payment(cashier):
             for i in dollars:                           # Only includes amounts that are higher than the total.
                 if i > total_price:
                     possible_dollars.append(i)
-            if possible_dollars[0] > 20:                # This part findss the minimum number of $20 bills that
+            if possible_dollars[0] > 20:                # This part finds the minimum number of $20 bills that
                 twenties = 40                           # will cover the cost. They're the most common 
                 while twenties < total_price:           # denomination I work with besides $1s, so I felt this
                     twenties += 20                      # feature would be useful.
@@ -642,6 +705,9 @@ def finish_transaction(cashier):
             cur.execute("INSERT INTO interim_trans_{} VALUES('{}',{},{},{},{},{},{})".format(
                 cashier, name, icode, ccode, quantity, price, final_price, dept))
         conn.commit()
+    total_sales_tax = round(total_sales_tax, 2)     # The receipt looks stupid if I don't round at every opportunity.
+    total_price = round(total_price, 2)
+    total_savings = round(total_savings, 2)
     total_sales_tax_text = "Sales tax: ${}".format(total_sales_tax)
     total_price_text = "Total price: ${}".format(total_price)
     total_savings_text = "You saved ${}".format(total_savings)
@@ -660,13 +726,13 @@ def finish_transaction(cashier):
             current_points = 0
         current_points += total_points
         current_points_text = "You now have {} total points".format(current_points)
-        if total_savings > 0:
+        if total_savings > 0:   # This code appends the sales tax, total price, savings, and earned points onto the end of the receipt.
             all_depts[8].extend(["", total_sales_tax_text, total_price_text, total_savings_text, earned_points_text, current_points_text, verbdt, your_cashier])
-        else:
+        else:                   # If there were no points earned, it only gives the current points.
             all_depts[8].extend(["", total_sales_tax_text, total_price_text, earned_points_text, current_points_text, verbdt, your_cashier])
-    elif total_savings > 0:
+    elif total_savings > 0:     # If there was no card, but there were savings, it omits everything related to points.
         all_depts[8].extend(["", total_sales_tax_text, total_price_text, total_savings_text, verbdt, your_cashier])
-    else:
+    else:                       # If there was no card or savings, it omits both.
         all_depts[8].extend(["", total_sales_tax_text, total_price_text, verbdt, your_cashier])
     cur.execute("SELECT icode, ccode FROM interim_trans_{}".format(cashier))
     ccodes = cur.fetchall() # Returns a list of tuple pairs, like [(4011, 4011)...]
@@ -677,7 +743,7 @@ def finish_transaction(cashier):
             things = cur.fetchall()
             things = things[0]
             interim_price = things[2]
-            department = things[3]
+            department = things[3]  # Item name: Quantity $Price
             sentence = "{}: {} ${}".format(things[0], things[1], interim_price)
             all_depts[department].append(sentence)
             cur.execute("SELECT name, final_price FROM interim_trans_{} WHERE icode = {} AND icode != ccode".format(cashier, ccode))
@@ -687,7 +753,8 @@ def finish_transaction(cashier):
                 coupon_savings = coupon[1]
                 sentence = "{}: ${}".format(coupon[0], coupon_savings)
                 all_depts[department].append(sentence)
-                total_savings = interim_price + coupon_savings
+                total_savings = interim_price - coupon_savings
+                total_savings = round(total_savings, 2)
                 sentence = "Your price: ${}".format(total_savings)
                 all_depts[department].append(sentence)
     save_dir = "receipts/"
@@ -702,6 +769,13 @@ def finish_transaction(cashier):
                     file.write("{}".format(k))  # A bit hacky, but it works.
                 else:
                     file.write("{}\n".format(k))
+    #cur.execute("SELECT icode, ccode, quantity FROM interim_trans_{}".format(cashier))
+    #to_lower = cur.fetchall()
+    #for k in to_lower:
+    #    if k[0] == k[1]:    # Is this a coupon? If not, proceed.
+    #        item_code = k[1]# Just so we know what's going on.
+    #        quan_lower = k[2]
+    #        cur.execute("UPDATE stock SET quan = quan - ? WHERE code = ?", (quan_lower, item_code))
     cur.execute("DELETE FROM current_trans_{}".format(cashier))
     cur.execute("DELETE FROM interim_trans_{}".format(cashier))
     cur.execute("""UPDATE current_trans_meta

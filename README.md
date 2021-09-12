@@ -23,6 +23,7 @@ database template with all the requisite information.
 - Verifying the age of someone requesting to buy age-restricted  
   products, and storing that information in the meta table.
 - Processing a transaction and generating a receipt.
+- Canceling the transaction.
 
 
 The products table, part of the store database,
@@ -54,7 +55,7 @@ currently tracks the following:
 - The discounted price offered to rewards card members.
 - The item's department, in the form of an integer.
 
-The coupons table in the same database
+The coupons table in the same databaseyour
 currently tracks the following:
 - An ID tracked by the program.
 - The name of the coupon. Usually similar to
@@ -178,6 +179,29 @@ The store data table currently stores the following:
   So, as long as this is a CLI program, they will stay.
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
+
+### Version 0.020
+- Added manager_auth  
+  This function allows a manager to authorize an action normally
+  impermissible by the program. For example, voiding the transaction
+  requires a manager's permission.
+- Speaking of which, added void_transaction  
+  This function deletes all items from the current_trans table and
+  restores all affected items to the stock table.
+- Adding an item to the transaction now removes that quantity
+  of items from the stock table.
+- process_item now lets the age be entered again if it was below
+  the minimum age the first time.
+- process_item now creates a discount entry in the current_trans
+  table when an item has a card discount price and a customer's
+  phone number has been entered. Previously it would simply
+  put in the discount price and add a noted price delta.
+- process_coupon now checks the current_trans table to see if
+  a coupon has been applied its maximum number of times before
+  applying it again.
+- More variables now round to 2 decimal places in finish_transaction.
+- finish_transaction now only displays savings and points information
+  if there was money saved or points earned during a transaction.
 
 ### Version 0.019
 - Added finish_transaction  

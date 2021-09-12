@@ -1,4 +1,3 @@
-from sqlite3.dbapi2 import SQLITE_DROP_VIEW
 from core_backend import sanitize, stop_dupe
 from inventory_backend import check_numeric
 import sqlite3

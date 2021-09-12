@@ -12,8 +12,9 @@ while active == 1:
     search for product (3), search for coupon (4), 
     search for customer by phone number (5), void last (6),
     void specific entry (7), finish transaction (8),
-    lock register (9), sign off (10)""")
-    options = range(1, 11, 1)
+    lock register (9), sign off (10),
+    void transaction (11)""")
+    options = range(1, 12, 1)
     choice = get_result("Enter your choice: ", options)
     if choice in options:
         if choice == 1:
@@ -33,8 +34,10 @@ while active == 1:
         elif choice == 8:
             print(payment(uname))
         elif choice == 9:
-            unlock(uname)               # Just loops until the correct passcode
-        else:                           # is provided, so no need to print this either.
+            unlock(uname)               
+        elif choice == 11:
+            print(void_transaction(uname))  # Just loops until the correct passcode
+        else:                               # is provided, so no need to print this either.
             active = 0
             print("Exiting.")
     else:
