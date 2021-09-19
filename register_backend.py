@@ -408,25 +408,28 @@ def void(cashier):
         del_item = input("What is the name of the item? ")
         del_item = sanitize(del_item)
         del_item = "%"+del_item+"%"
-        cur.execute("SELECT * FROM current_trans_{} WHERE pname LIKE {} COLLATE NOCASE".format(cashier, del_item))
+        cur.execute("SELECT * FROM current_trans_{} WHERE pname LIKE '{}' COLLATE NOCASE".format(cashier, del_item))
     elif entry_type == 2:
         del_item = check_numeric("What is the item code? ", False, "int")
         del_item = str(del_item)
         del_item = "%"+del_item+"%"
-        cur.execute("SELECT * FROM current_trans_{} WHERE icode LIKE {}".format(cashier, del_item,))
+        cur.execute("SELECT * FROM current_trans_{} WHERE icode LIKE '{}'".format(cashier, del_item,))
     rows = cur.fetchall()
     if not isinstance(rows,list):
         del_item = re.sub("%","",del_item)
         return "No results found for %s." % del_item
     len_rows = len(rows)
     coupon_entries = []
+    card_entries = []
     if len_rows == 1:
         chosen_row = rows[0]
     else:
         seq = 1
         for i in rows:
             print("Number %s: %s" % (seq, i))
-            if i[2] != i[11]:
+            if i[11] == 1:      # Is this entry a rewards card discount?
+                card_entries.append(i)
+            elif i[2] != i[11]: # If not, is it a coupon?
                 coupon_entries.append(i)
             seq = seq + 1
         len_rows = len_rows + 1
@@ -435,6 +438,8 @@ def void(cashier):
         selected_row = selected_row - 1
         chosen_row = rows[selected_row]
     chosen_row_id = chosen_row[0]
+    chosen_row_code = chosen_row[2]
+    chosen_row_quan = chosen_row[3]
     cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, chosen_row_id,))
     print("Deleted entry: {}".format(chosen_row))
     if len(coupon_entries) > 0:
@@ -442,6 +447,14 @@ def void(cashier):
         for i in coupon_entries:
             coupon_entry_id = i[0]
             cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, coupon_entry_id,))
+    if len(card_entries) > 0:
+        print("Deleting matching card discount entry.")
+        cur.execute("""SELECT MAX(id) FROM current_trans_{} WHERE icode = {}
+        AND user_weight = {} AND coupon_code = 1""".format(cashier, chosen_row_code, chosen_row_quan))
+        max_card_id = cur.fetchone()
+        max_card_id = max_card_id[0]
+        cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, max_card_id))
+    cur.execute("UPDATE stock SET quan = quan + ? WHERE code = ?", (chosen_row_quan, chosen_row_code))
     conn.commit()
     conn.close()
     return "Successfully deleted entry."
@@ -449,13 +462,17 @@ def void(cashier):
 def void_last(cashier):
     conn = sqlite3.connect("store.db")
     cur = conn.cursor()
-    cur.execute("SELECT MAX(id) FROM current_trans_{}".format(cashier,))
+    cur.execute("SELECT MAX(id) FROM current_trans_{} WHERE icode = coupon_code".format(cashier,))
     max_id = cur.fetchone()
     max_id = max_id[0]
-    cur.execute("SELECT pname FROM current_trans_{} WHERE id = {}".format(cashier, max_id,))
-    pname = cur.fetchone()
-    pname = pname[0]
+    cur.execute("SELECT pname, icode, user_weight FROM current_trans_{} WHERE id = {}".format(cashier, max_id,))
+    pdata = cur.fetchone()
+    pname = pdata[0]
+    pcode = pdata[1]
+    pquan = pdata[2]
     cur.execute("DELETE FROM current_trans_{} WHERE id = {}".format(cashier, max_id,))
+    cur.execute("DELETE FROM current_trans_{} WHERE id > {} AND icode = {} AND user_weight = {}".format(cashier, max_id, pcode, pquan))
+    cur.execute("UPDATE stock SET quan = quan + ? WHERE code = ?", (pquan, pcode))
     conn.commit()
     conn.close()
     return "Deleted last {} from the transaction".format(pname)
@@ -475,10 +492,132 @@ def void_transaction(cashier):
             if icode == ccode:  # Is this a coupon? If not, proceed.
                 cur.execute("UPDATE stock SET quan = quan + ? WHERE code = ?", (quan, icode))
         cur.execute("DELETE FROM current_trans_{}".format(cashier))
+        cur.execute("""UPDATE current_trans_meta
+        SET disc_card = 0,
+        cust_age = 0,
+        paid = 0,
+        paid_ebt = 0,
+        overflow = 0
+        WHERE cashier = ?""", (cashier,))
         conn.commit()
         return "Transaction canceled."
     else:
-        return "Cannot complete."
+        return "Cannot complete: Unauthorized."
+
+def suspend_transaction(cashier):
+    print("This action requires authorization.")
+    authorization = manager_auth()
+    if authorization:
+        conn = sqlite3.connect("store.db")
+        cur = conn.cursor()
+        cur.execute("SELECT disc_card, cust_age FROM current_trans_meta WHERE cashier = ?", (cashier,))
+        customer_data = cur.fetchone()
+        phone = customer_data[0]
+        customer_age = customer_data[1]
+        dt = datetime.now()
+        suspend_name = dt.strftime("%Y-%m-%d-%H%M%S-{}".format(cashier))
+        cur.execute("""CREATE TABLE IF NOT EXISTS 'sus_trans_{}'(
+        id INTEGER PRIMARY KEY,
+        pname TEXT,
+        icode INTEGER,
+        user_weight REAL,
+        price REAL,
+        final_price REAL,
+        product_tax REAL,
+        ebt_paid INTEGER,
+        rewards_points REAL,
+        price_delta REAL,
+        req_points INTEGER,
+        coupon_code INTEGER
+        )""".format(suspend_name))
+        cur.execute("INSERT INTO 'sus_trans_{}' SELECT * FROM current_trans_{}".format(suspend_name, cashier))
+        cur.execute("INSERT INTO current_trans_meta VALUES (?,?,?,?,0,0,0)", (suspend_name, "Suspended", phone, customer_age))
+        cur.execute("""UPDATE current_trans_meta
+        SET disc_card = 0,
+        cust_age = 0,
+        paid = 0,
+        paid_ebt = 0,
+        overflow = 0
+        WHERE cashier = ?""", (cashier,))
+        conn.commit()
+        cur.execute("DELETE FROM current_trans_{}".format(cashier))
+        conn.commit()
+        conn.close()
+        return "Transaction suspended. Table name is 'sus_trans_{}'.".format(suspend_name)
+    else:
+        return "Cannot complete: Unauthorized."
+
+def retrieve_transaction(cashier):
+    print("This action requires authorization.")
+    authorization = manager_auth()
+    if authorization:
+        conn = sqlite3.connect("store.db")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM current_trans_{}".format(cashier))
+        current_trans = cur.fetchall()
+        if current_trans:
+            return "Cannot complete: You have a running transaction."
+        cur.execute("SELECT * FROM current_trans_meta WHERE cashier_fname = 'Suspended'")
+        rows = cur.fetchall()
+        len_rows = len(rows)
+        if len_rows == 1:
+            chosen_row = rows[0]
+        else:
+            seq = 1
+            for i in rows:
+                print("Number %s: %s" % (seq, i))
+                seq = seq + 1
+            avail_rows = [*range(1, len_rows, 1)]
+            selected_row = get_result("Which transaction would you like to retrieve? ", avail_rows)
+            selected_row = selected_row - 1
+            chosen_row = rows[selected_row]
+        retrieved = chosen_row[0]
+        disc_card = chosen_row[2]
+        cur.execute("INSERT INTO current_trans_{} SELECT * FROM 'sus_trans_{}'".format(cashier, retrieved))
+        cur.execute("""UPDATE current_trans_meta
+        SET disc_card = ?,
+        cust_age = 0,
+        paid = 0,
+        paid_ebt = 0,
+        overflow = 0
+        WHERE cashier = ?""", (disc_card, cashier))
+        cur.execute("DELETE FROM current_trans_meta WHERE cashier = ?", (retrieved,))
+        cur.execute("DROP TABLE 'sus_trans_{}'".format(retrieved))
+        conn.commit()
+        legality = []
+        legal = ""
+        cust_age = ""
+        updated = False
+        cur.execute("SELECT * FROM current_trans_{}".format(cashier))
+        all_items = cur.fetchall()
+        for j in all_items:
+            if j[2] == j[11]:       # There's no sense in looking for stock items by coupon code.
+                item_name = j[1]
+                item_code = j[2]
+                cur.execute("SELECT age FROM stock WHERE code = ?", (item_code,))
+                age_req = cur.fetchone()
+                age_req = age_req[0]
+                cur.execute("SELECT * FROM current_trans_{} WHERE icode = {}".format(cashier, item_code))
+                beers = cur.fetchall()  # There's also no sense deleting something from the table
+                if age_req > 0 and len(beers) > 0:  # if it isn't there to begin with.
+                    cur.execute("SELECT cust_age FROM current_trans_meta WHERE cashier = ?", (cashier,))
+                    cust_age = cur.fetchone()
+                    cust_age = cust_age[0]
+                    if legality == []:
+                        legality = check_age(age_req, cust_age)
+                        legal = legality[0]
+                        cust_age = legality[1]
+                    if legal == "illegal":
+                        print("Customer is underage. Removing all instances of item: {}".format(item_name))
+                        cur.execute("DELETE FROM current_trans_{} WHERE icode = {}".format(cashier, item_code))
+                    if legal == "legal" and not updated:
+                        cur.execute("UPDATE current_trans_meta SET cust_age = ?", (cust_age,))
+                        updated = True
+        conn.commit()
+        conn.close()
+        return "Transaction {} retrieved.".format(retrieved)
+    else:
+        return "Cannot complete: Unauthorized."
 
 def view_transaction(cashier):
     conn = sqlite3.connect("store.db")
@@ -664,9 +803,9 @@ def finish_transaction(cashier):
     transaction = cur.fetchall()
     if not transaction:
         return "There is no transaction to finish."
-    dt = datetime.now()                         # Getting the current time to print on the receipt,
-    codedt = dt.strftime("%Y%m%d-%H%M%S-{}".format(cashier))    # and for the receipt's filename.
-    verbdt = dt.strftime("%A, %B %d, %Y")
+    dt = datetime.now()                         # Getting the current time,
+    codedt = dt.strftime("%Y%m%d-%H%M%S-{}".format(cashier))    # for the receipt's filename,
+    verbdt = dt.strftime("%A, %B %d, %Y")       # and to print on the receipt.
     cur.execute("SELECT cashier_fname FROM current_trans_meta WHERE cashier = ?", (cashier,))
     cashier_name = cur.fetchone()
     cashier_name = cashier_name[0]
@@ -745,7 +884,7 @@ def finish_transaction(cashier):
             interim_price = things[2]
             department = things[3]  # Item name: Quantity $Price
             sentence = "{}: {} ${}".format(things[0], things[1], interim_price)
-            all_depts[department].append(sentence)
+            all_depts[department].append(sentence)  # Puts the entry at the end of the appropriate list.
             cur.execute("SELECT name, final_price FROM interim_trans_{} WHERE icode = {} AND icode != ccode".format(cashier, ccode))
             coupon = cur.fetchall()
             if coupon:

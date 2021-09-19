@@ -13,7 +13,7 @@ while active == 1:
     search for customer by phone number (5), void last (6),
     void specific entry (7), finish transaction (8),
     lock register (9), sign off (10),
-    void transaction (11)""")
+    manager actions (11)""")
     options = range(1, 12, 1)
     choice = get_result("Enter your choice: ", options)
     if choice in options:
@@ -34,10 +34,26 @@ while active == 1:
         elif choice == 8:
             print(payment(uname))
         elif choice == 9:
-            unlock(uname)               
-        elif choice == 11:
-            print(void_transaction(uname))  # Just loops until the correct passcode
-        else:                               # is provided, so no need to print this either.
+            unlock(uname)   # Just loops until the correct passcode
+        elif choice == 11:  # is provided, so no need to print this either.
+            manager = 1
+            while manager == 1:
+                manager_options = [1, 2, 3, 4]
+                print("""Manager actions: Void transaction (1), suspend transaction (2),
+                retrieve transaction (3). Or (4) to return.""")
+                manager_choice = get_result("Enter your choice: ", manager_options)
+                if manager_choice in manager_options:
+                    if manager_choice == 1:
+                        print(void_transaction(uname))  
+                    elif manager_choice == 2:           
+                        print(suspend_transaction(uname))
+                    elif manager_choice == 3:
+                        print(retrieve_transaction(uname))
+                    else:
+                        manager = 0
+                else:
+                    print("Invalid command.")
+        else:                               
             active = 0
             print("Exiting.")
     else:

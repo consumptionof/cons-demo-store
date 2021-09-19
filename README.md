@@ -180,6 +180,21 @@ The store data table currently stores the following:
   Maybe when I take this to a GUI I'll be able to rework
   them to work with text entry fields.
 
+### Version 0.021
+- Added suspend_transaction  
+  This function will store a transaction in a separate table,
+  allowing the cashier to perform another transaction before the first
+  one is finished. This function requires manager authorization.  
+- Added retrieve_transaction  
+  This function retrieves a transaction stored with suspend_transaction.
+  If there are age-restricted items, the cashier will be required to
+  obtain the customer's birthdate once again. This function requires
+  manager authorization.  
+- void and void_last now remove relevant store card discount entries along with
+  the item.  
+- void and void_last now restore the removed items in the stock table.
+- void_transaction now resets the cashier's current_trans_meta data.
+
 ### Version 0.020
 - Added manager_auth  
   This function allows a manager to authorize an action normally
